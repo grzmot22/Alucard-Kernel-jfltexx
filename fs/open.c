@@ -717,7 +717,7 @@ cleanup_all:
 			 */
 			put_write_access(inode);
 			file_reset_write(f);
-			mnt_drop_write(f->f_path.mnt);
+			__mnt_drop_write(f->f_path.mnt);
 		}
 	}
 cleanup_file:
