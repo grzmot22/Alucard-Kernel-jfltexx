@@ -200,8 +200,9 @@
 			};
 
 			timrot@80068000 {
-				reg = <0x80068000 2000>;
-				status = "disabled";
+				compatible = "fsl,imx23-timrot", "fsl,timrot";
+				reg = <0x80068000 0x2000>;
+				interrupts = <28 29 30 31>;
 			};
 
 			auart0: serial@8006c000 {
