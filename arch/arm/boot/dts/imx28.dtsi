@@ -48,8 +48,9 @@
 			};
 
 			dma-apbh@80004000 {
-				reg = <0x80004000 2000>;
-				status = "disabled";
+				compatible = "fsl,imx28-dma-apbh";
+				reg = <0x80004000 0x2000>;
+				clocks = <&clks 25>;
 			};
 
 			perfmon@80006000 {
@@ -58,39 +59,48 @@
 				status = "disabled";
 			};
 
-			bch@8000a000 {
-				reg = <0x8000a000 2000>;
-				interrupts = <41>;
-				status = "disabled";
-			};
-
-			gpmi@8000c000 {
-				reg = <0x8000c000 2000>;
-				interrupts = <42 88>;
+			gpmi-nand@8000c000 {
+				compatible = "fsl,imx28-gpmi-nand";
+				#address-cells = <1>;
+				#size-cells = <1>;
+				reg = <0x8000c000 0x2000>, <0x8000a000 0x2000>;
+				reg-names = "gpmi-nand", "bch";
+				interrupts = <88>, <41>;
+				interrupt-names = "gpmi-dma", "bch";
+				clocks = <&clks 50>;
+				fsl,gpmi-dma-channel = <4>;
 				status = "disabled";
 			};
 
 			ssp0: ssp@80010000 {
 				reg = <0x80010000 2000>;
 				interrupts = <96 82>;
+				clocks = <&clks 46>;
+				fsl,ssp-dma-channel = <0>;
 				status = "disabled";
 			};
 
 			ssp1: ssp@80012000 {
 				reg = <0x80012000 2000>;
 				interrupts = <97 83>;
+				clocks = <&clks 47>;
+				fsl,ssp-dma-channel = <1>;
 				status = "disabled";
 			};
 
 			ssp2: ssp@80014000 {
 				reg = <0x80014000 2000>;
 				interrupts = <98 84>;
+				clocks = <&clks 48>;
+				fsl,ssp-dma-channel = <2>;
 				status = "disabled";
 			};
 
 			ssp3: ssp@80016000 {
 				reg = <0x80016000 2000>;
 				interrupts = <99 85>;
+				clocks = <&clks 49>;
+				fsl,ssp-dma-channel = <3>;
 				status = "disabled";
 			};
 
@@ -140,8 +150,9 @@
 			};
 
 			dma-apbx@80024000 {
-				reg = <0x80024000 2000>;
-				status = "disabled";
+				compatible = "fsl,imx28-dma-apbx";
+				reg = <0x80024000 0x2000>;
+				clocks = <&clks 26>;
 			};
 
 			dcp@80028000 {
@@ -169,18 +180,23 @@
 			lcdif@80030000 {
 				reg = <0x80030000 2000>;
 				interrupts = <38 86>;
+				clocks = <&clks 55>;
 				status = "disabled";
 			};
 
 			can0: can@80032000 {
 				reg = <0x80032000 2000>;
 				interrupts = <8>;
+				clocks = <&clks 58>, <&clks 58>;
+				clock-names = "ipg", "per";
 				status = "disabled";
 			};
 
 			can1: can@80034000 {
 				reg = <0x80034000 2000>;
 				interrupts = <9>;
+				clocks = <&clks 59>, <&clks 59>;
+				clock-names = "ipg", "per";
 				status = "disabled";
 			};
 
@@ -227,14 +243,17 @@
 			reg = <0x80040000 0x40000>;
 			ranges;
 
-			clkctl@80040000 {
-				reg = <0x80040000 2000>;
-				status = "disabled";
+			clks: clkctrl@80040000 {
+				compatible = "fsl,imx28-clkctrl";
+				reg = <0x80040000 0x2000>;
+				#clock-cells = <1>;
 			};
 
 			saif0: saif@80042000 {
 				reg = <0x80042000 2000>;
 				interrupts = <59 80>;
+				clocks = <&clks 53>;
+				fsl,saif-dma-channel = <4>;
 				status = "disabled";
 			};
 
@@ -246,6 +265,8 @@
 			saif1: saif@80046000 {
 				reg = <0x80046000 2000>;
 				interrupts = <58 81>;
+				clocks = <&clks 54>;
+				fsl,saif-dma-channel = <5>;
 				status = "disabled";
 			};
 
@@ -278,8 +299,12 @@
 				status = "disabled";
 			};
 
-			pwm@80064000 {
-				reg = <0x80064000 2000>;
+			pwm: pwm@80064000 {
+				compatible = "fsl,imx28-pwm", "fsl,imx23-pwm";
+				reg = <0x80064000 0x2000>;
+				clocks = <&clks 44>;
+				#pwm-cells = <2>;
+				fsl,pwm-number = <8>;
 				status = "disabled";
 			};
 
@@ -292,30 +317,35 @@
 			auart0: serial@8006a000 {
 				reg = <0x8006a000 0x2000>;
 				interrupts = <112 70 71>;
+				clocks = <&clks 45>;
 				status = "disabled";
 			};
 
 			auart1: serial@8006c000 {
 				reg = <0x8006c000 0x2000>;
 				interrupts = <113 72 73>;
+				clocks = <&clks 45>;
 				status = "disabled";
 			};
 
 			auart2: serial@8006e000 {
 				reg = <0x8006e000 0x2000>;
 				interrupts = <114 74 75>;
+				clocks = <&clks 45>;
 				status = "disabled";
 			};
 
 			auart3: serial@80070000 {
 				reg = <0x80070000 0x2000>;
 				interrupts = <115 76 77>;
+				clocks = <&clks 45>;
 				status = "disabled";
 			};
 
 			auart4: serial@80072000 {
 				reg = <0x80072000 0x2000>;
 				interrupts = <116 78 79>;
+				clocks = <&clks 45>;
 				status = "disabled";
 			};
 
@@ -323,16 +353,20 @@
 				compatible = "arm,pl011", "arm,primecell";
 				reg = <0x80074000 0x1000>;
 				interrupts = <47>;
+				clocks = <&clks 45>, <&clks 26>;
+				clock-names = "uart", "apb_pclk";
 				status = "disabled";
 			};
 
 			usbphy0: usbphy@8007c000 {
 				reg = <0x8007c000 0x2000>;
+				clocks = <&clks 62>;
 				status = "disabled";
 			};
 
 			usbphy1: usbphy@8007e000 {
 				reg = <0x8007e000 0x2000>;
+				clocks = <&clks 63>;
 				status = "disabled";
 			};
 		};
@@ -347,11 +381,17 @@
 
 		usbctrl0: usbctrl@80080000 {
 			reg = <0x80080000 0x10000>;
+			interrupts = <93>;
+			clocks = <&clks 60>;
+			fsl,usbphy = <&usbphy0>;
 			status = "disabled";
 		};
 
 		usbctrl1: usbctrl@80090000 {
 			reg = <0x80090000 0x10000>;
+			interrupts = <92>;
+			clocks = <&clks 61>;
+			fsl,usbphy = <&usbphy1>;
 			status = "disabled";
 		};
 
@@ -364,6 +404,8 @@
 			compatible = "fsl,imx28-fec";
 			reg = <0x800f0000 0x4000>;
 			interrupts = <101>;
+			clocks = <&clks 57>, <&clks 57>;
+			clock-names = "ipg", "ahb";
 			status = "disabled";
 		};
 
@@ -371,6 +413,8 @@
 			compatible = "fsl,imx28-fec";
 			reg = <0x800f4000 0x4000>;
 			interrupts = <102>;
+			clocks = <&clks 57>, <&clks 57>;
+			clock-names = "ipg", "ahb";
 			status = "disabled";
 		};
 
