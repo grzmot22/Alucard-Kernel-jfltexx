@@ -9,6 +9,9 @@ config UX500_SOC_COMMON
 	select ARM_ERRATA_754322
 	select ARM_ERRATA_764369
 	select CACHE_L2X0
+	select PINCTRL
+	select PINCTRL_NOMADIK
+	select COMMON_CLK
 
 config UX500_SOC_DB5500
 	bool

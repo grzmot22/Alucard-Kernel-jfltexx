@@ -2,7 +2,7 @@
 # Makefile for the linux kernel, U8500 machine.
 #
 
-obj-y				:= clock.o cpu.o devices.o devices-common.o \
+obj-y				:= cpu.o devices.o devices-common.o \
 				   id.o usb.o timer.o
 obj-$(CONFIG_CACHE_L2X0)	+= cache-l2x0.o
 obj-$(CONFIG_UX500_SOC_DB5500)	+= cpu-db5500.o dma-db5500.o
