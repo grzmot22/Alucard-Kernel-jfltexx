@@ -2297,7 +2297,6 @@ static inline void flush_unauthorized_files(const struct cred *cred,
 		no_tty();
 
 	/* Revalidate access to inherited open files. */
-
 	n = iterate_fd(files, 0, match_file, cred);
 	if (!n) /* none found? */
 		return;
