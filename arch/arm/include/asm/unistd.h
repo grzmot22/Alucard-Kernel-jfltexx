@@ -481,7 +481,6 @@
 #define __ARCH_WANT_SYS_SOCKETCALL
 #endif
 #define __ARCH_WANT_SYS_EXECVE
-#define __ARCH_WANT_KERNEL_EXECVE
 
 /*
  * "Conditional" syscalls
