@@ -892,5 +892,5 @@ asmlinkage long sys_process_vm_writev(pid_t pid,
 
 asmlinkage long sys_seccomp(unsigned int op, unsigned int flags,
 			    const char __user *uargs);
-asmlinkage long sys_finit_module(int fd, const char __user *uargs);
+asmlinkage long sys_finit_module(int fd, const char __user *uargs, int flags);
 #endif
