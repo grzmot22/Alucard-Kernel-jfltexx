@@ -389,7 +389,7 @@ static int wm831x_clk_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int __devexit wm831x_clk_remove(struct platform_device *pdev)
+static int wm831x_clk_remove(struct platform_device *pdev)
 {
 	return 0;
 }
