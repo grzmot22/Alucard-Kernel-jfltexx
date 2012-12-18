@@ -27,6 +27,7 @@
 #include <linux/writeback.h>
 #include <linux/log2.h>
 #include <linux/hash.h>
+#include <linux/blkdev.h>
 #include <asm/unaligned.h>
 #include "fat.h"
 
@@ -1528,7 +1529,13 @@ int fat_fill_super(struct super_block *sb, void *data, int silent, int isvfat,
 		goto out_fail;
 	}
 
-	fat_msg(sb, KERN_INFO, "mounted successfully!");
+	if (sbi->options.discard) {
+		struct request_queue *q = bdev_get_queue(sb->s_bdev);
+		if (!blk_queue_discard(q))
+			fat_msg(sb, KERN_WARNING,
+					"mounting with \"discard\" option, but "
+					"the device does not support discard");
+	}
 	ST_LOG("<%s> mounted successfully! %d:%d",__func__,MAJOR(sb->s_dev),MINOR(sb->s_dev));
 	return 0;
 
