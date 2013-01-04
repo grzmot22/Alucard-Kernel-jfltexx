@@ -18,6 +18,7 @@
 #include <linux/slab.h>
 #include <linux/of.h>
 #include <linux/device.h>
+#include <linux/init.h>
 
 static DEFINE_SPINLOCK(enable_lock);
 static DEFINE_MUTEX(prepare_lock);
@@ -1794,6 +1795,11 @@ struct of_clk_provider {
 	void *data;
 };
 
+extern struct of_device_id __clk_of_table[];
+
+static const struct of_device_id __clk_of_table_sentinel
+	__used __section(__clk_of_table_end);
+
 static LIST_HEAD(of_clk_providers);
 static DEFINE_MUTEX(of_clk_lock);
 
@@ -1921,6 +1927,9 @@ EXPORT_SYMBOL_GPL(of_clk_get_parent_name);
 void __init of_clk_init(const struct of_device_id *matches)
 {
 	struct device_node *np;
+
+	if (!matches)
+		matches = __clk_of_table;
 
 	for_each_matching_node(np, matches) {
 		const struct of_device_id *match = of_match_node(matches, np);
