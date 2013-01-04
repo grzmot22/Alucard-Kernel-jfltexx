@@ -23,6 +23,8 @@
 #include <linux/of_platform.h>
 #include <linux/of_address.h>
 #include <linux/smp.h>
+#include <linux/amba/bus.h>
+#include <linux/clk-provider.h>
 
 #include <asm/cacheflush.h>
 #include <asm/smp_plat.h>
@@ -112,7 +114,7 @@ static void __init highbank_timer_init(void)
 	WARN_ON(!timer_base);
 	irq = irq_of_parse_and_map(np, 0);
 
-	highbank_clocks_init();
+	of_clk_init(NULL);
 	lookup.clk = of_clk_get(np, 0);
 	clkdev_add(&lookup);
 
