@@ -22,6 +22,7 @@
 #include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/of_irq.h>
+#include <linux/clk/tegra.h>
 
 #include <asm/hardware/cache-l2x0.h>
 #include <asm/hardware/gic.h>
@@ -30,7 +31,7 @@
 #include <mach/powergate.h>
 
 #include "board.h"
-#include "clock.h"
+#include "common.h"
 #include "fuse.h"
 #include "pmc.h"
 
@@ -59,6 +60,7 @@ static const struct of_device_id tegra_dt_irq_match[] __initconst = {
 
 void __init tegra_dt_init_irq(void)
 {
+	tegra_clocks_init();
 	tegra_init_irq();
 	of_irq_init(tegra_dt_irq_match);
 }
@@ -74,26 +76,7 @@ void tegra_assert_system_reset(char mode, const char *cmd)
 	writel_relaxed(reg, reset);
 }
 
-#ifdef CONFIG_ARCH_TEGRA_2x_SOC
-static __initdata struct tegra_clk_init_table tegra20_clk_init_table[] = {
-	/* name		parent		rate		enabled */
-	{ "clk_m",	NULL,		0,		true },
-	{ "pll_p",	"clk_m",	216000000,	true },
-	{ "pll_p_out1",	"pll_p",	28800000,	true },
-	{ "pll_p_out2",	"pll_p",	48000000,	true },
-	{ "pll_p_out3",	"pll_p",	72000000,	true },
-	{ "pll_p_out4",	"pll_p",	108000000,	true },
-	{ "sclk",	"pll_p_out4",	108000000,	true },
-	{ "hclk",	"sclk",		108000000,	true },
-	{ "pclk",	"hclk",		54000000,	true },
-	{ "csite",	NULL,		0,		true },
-	{ "emc",	NULL,		0,		true },
-	{ "cpu",	NULL,		0,		true },
-	{ NULL,		NULL,		0,		0},
-};
-#endif
-
-static void __init tegra_init_cache(u32 tag_latency, u32 data_latency)
+static void __init tegra_init_cache(void)
 {
 #ifdef CONFIG_CACHE_L2X0
 	void __iomem *p = IO_ADDRESS(TEGRA_ARM_PERIF_BASE) + 0x3000;
@@ -115,9 +98,7 @@ static void __init tegra_init_cache(u32 tag_latency, u32 data_latency)
 void __init tegra20_init_early(void)
 {
 	tegra_init_fuse();
-	tegra2_init_clocks();
-	tegra_clk_init_from_table(tegra20_clk_init_table);
-	tegra_init_cache(0x331, 0x441);
+	tegra_init_cache();
 	tegra_pmc_init();
 	tegra_powergate_init();
 }
@@ -126,8 +107,7 @@ void __init tegra20_init_early(void)
 void __init tegra30_init_early(void)
 {
 	tegra_init_fuse();
-	tegra30_init_clocks();
-	tegra_init_cache(0x441, 0x551);
+	tegra_init_cache();
 	tegra_pmc_init();
 	tegra_powergate_init();
 }

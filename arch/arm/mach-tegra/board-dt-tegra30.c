@@ -34,7 +34,8 @@
 #include <asm/hardware/gic.h>
 
 #include "board.h"
-#include "clock.h"
+#include "common.h"
+#include "iomap.h"
 
 static struct of_device_id tegra_dt_match_table[] __initdata = {
 	{ .compatible = "simple-bus", },
@@ -54,17 +55,9 @@ struct of_dev_auxdata tegra30_auxdata_lookup[] __initdata = {
 	{}
 };
 
-static __initdata struct tegra_clk_init_table tegra_dt_clk_init_table[] = {
-	/* name		parent		rate		enabled */
-	{ "uarta",	"pll_p",	408000000,	true },
-	{ NULL,		NULL,		0,		0},
-};
-
 static void __init tegra30_dt_init(void)
 {
-	tegra_clk_init_from_table(tegra_dt_clk_init_table);
-
-	of_platform_populate(NULL, tegra_dt_match_table,
+	of_platform_populate(NULL, of_default_bus_match_table,
 				tegra30_auxdata_lookup, NULL);
 }
 

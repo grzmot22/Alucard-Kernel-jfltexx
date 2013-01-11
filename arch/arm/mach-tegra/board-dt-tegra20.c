@@ -43,9 +43,14 @@
 #include <mach/irqs.h>
 
 #include "board.h"
-#include "board-harmony.h"
-#include "clock.h"
-#include "devices.h"
+#include "common.h"
+#include "iomap.h"
+
+static struct tegra_ehci_platform_data tegra_ehci1_pdata = {
+	.operating_mode = TEGRA_USB_OTG,
+	.power_down_on_bus_suspend = 1,
+	.vbus_gpio = -1,
+};
 
 void harmony_pinmux_init(void);
 void paz00_pinmux_init(void);
@@ -76,24 +81,42 @@ struct of_dev_auxdata tegra20_auxdata_lookup[] __initdata = {
 	{}
 };
 
-static __initdata struct tegra_clk_init_table tegra_dt_clk_init_table[] = {
-	/* name		parent		rate		enabled */
-	{ "uartd",	"pll_p",	216000000,	true },
-	{ "usbd",	"clk_m",	12000000,	false },
-	{ "usb2",	"clk_m",	12000000,	false },
-	{ "usb3",	"clk_m",	12000000,	false },
-	{ "pll_a",      "pll_p_out1",   56448000,       true },
-	{ "pll_a_out0", "pll_a",        11289600,       true },
-	{ "cdev1",      NULL,           0,              true },
-	{ "i2s1",       "pll_a_out0",   11289600,       false},
-	{ "i2s2",       "pll_a_out0",   11289600,       false},
-	{ NULL,		NULL,		0,		0},
-};
+static void __init tegra_dt_init(void)
+{
+	/*
+	 * Finished with the static registrations now; fill in the missing
+	 * devices
+	 */
+	of_platform_populate(NULL, of_default_bus_match_table,
+				tegra20_auxdata_lookup, NULL);
+}
 
-static struct of_device_id tegra_dt_match_table[] __initdata = {
-	{ .compatible = "simple-bus", },
-	{}
-};
+static void __init trimslice_init(void)
+{
+#ifdef CONFIG_TEGRA_PCI
+	int ret;
+
+	ret = tegra_pcie_init(true, true);
+	if (ret)
+		pr_err("tegra_pci_init() failed: %d\n", ret);
+#endif
+}
+
+static void __init harmony_init(void)
+{
+#ifdef CONFIG_TEGRA_PCI
+	int ret;
+
+	ret = harmony_pcie_init();
+	if (ret)
+		pr_err("harmony_pcie_init() failed: %d\n", ret);
+#endif
+}
+
+static void __init paz00_init(void)
+{
+	tegra_paz00_wifikill_init();
+}
 
 static struct {
 	char *machine;

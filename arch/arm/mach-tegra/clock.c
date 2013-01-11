@@ -385,20 +385,6 @@ void tegra_clk_init_from_table(struct tegra_clk_init_table *table)
 }
 EXPORT_SYMBOL(tegra_clk_init_from_table);
 
-void tegra_periph_reset_deassert(struct clk *c)
-{
-	BUG_ON(!c->ops->reset);
-	c->ops->reset(c, false);
-}
-EXPORT_SYMBOL(tegra_periph_reset_deassert);
-
-void tegra_periph_reset_assert(struct clk *c)
-{
-	BUG_ON(!c->ops->reset);
-	c->ops->reset(c, true);
-}
-EXPORT_SYMBOL(tegra_periph_reset_assert);
-
 /* Several extended clock configuration bits (e.g., clock routing, clock
  * phase control) are included in PLL and peripheral clock source
  * registers. */

@@ -28,10 +28,9 @@
 #include <linux/i2c-tegra.h>
 #include <linux/of_i2c.h>
 #include <linux/module.h>
+#include <linux/clk/tegra.h>
 
 #include <asm/unaligned.h>
-
-#include <mach/clk.h>
 
 #define TEGRA_I2C_TIMEOUT (msecs_to_jiffies(1000))
 #define BYTES_PER_FIFO_WORD 4
