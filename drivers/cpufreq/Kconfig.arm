@@ -76,3 +76,9 @@ config ARM_S5PV210_CPUFREQ
 
 	  If in doubt, say N.
 
+config ARM_KIRKWOOD_CPUFREQ
+	def_bool ARCH_KIRKWOOD && OF
+	help
+	  This adds the CPUFreq driver for Marvell Kirkwood
+	  SoCs.
+
