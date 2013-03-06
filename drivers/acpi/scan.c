@@ -1599,7 +1599,13 @@ int __init acpi_scan_init(void)
 		printk(KERN_ERR PREFIX "Could not register bus type\n");
 	}
 
-	acpi_power_init();
+	acpi_pci_root_init();
+	acpi_pci_link_init();
+	acpi_platform_init();
+	acpi_lpss_init();
+	acpi_csrt_init();
+	acpi_container_init();
+	acpi_pci_slot_init();
 
 	/*
 	 * Enumerate devices in the ACPI namespace.

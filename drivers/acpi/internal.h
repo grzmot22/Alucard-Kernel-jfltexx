@@ -33,6 +33,11 @@ int acpi_debugfs_init(void);
 #else
 static inline void acpi_debugfs_init(void) { return; }
 #endif
+#ifdef CONFIG_X86_INTEL_LPSS
+void acpi_lpss_init(void);
+#else
+static inline void acpi_lpss_init(void) {}
+#endif
 
 /* --------------------------------------------------------------------------
                                   Power Resource
@@ -92,5 +97,13 @@ static inline void suspend_nvs_free(void) {}
 static inline int suspend_nvs_save(void) { return 0; }
 static inline void suspend_nvs_restore(void) {}
 #endif
+
+/*--------------------------------------------------------------------------
+				Platform bus support
+  -------------------------------------------------------------------------- */
+struct platform_device;
+
+int acpi_create_platform_device(struct acpi_device *adev,
+				const struct acpi_device_id *id);
 
 #endif /* _ACPI_INTERNAL_H_ */
