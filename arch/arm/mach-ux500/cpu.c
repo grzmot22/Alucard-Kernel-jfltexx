@@ -58,16 +58,21 @@ void __init ux500_init_irq(void)
 	 * Init clocks here so that they are available for system timer
 	 * initialization.
 	 */
-	if (cpu_is_u5500())
-		db5500_prcmu_early_init();
-	if (cpu_is_u8500())
-		db8500_prcmu_early_init();
-
-	if (cpu_is_u8500_family())
-		u8500_clk_init();
-	else if (cpu_is_u9540())
-		u9540_clk_init();
-	else if (cpu_is_u8540())
+	if (cpu_is_u8500_family()) {
+		prcmu_early_init(U8500_PRCMU_BASE, SZ_8K - 1);
+		ux500_pm_init(U8500_PRCMU_BASE, SZ_8K - 1);
+		u8500_clk_init(U8500_CLKRST1_BASE, U8500_CLKRST2_BASE,
+			       U8500_CLKRST3_BASE, U8500_CLKRST5_BASE,
+			       U8500_CLKRST6_BASE);
+	} else if (cpu_is_u9540()) {
+		prcmu_early_init(U8500_PRCMU_BASE, SZ_8K - 1);
+		ux500_pm_init(U8500_PRCMU_BASE, SZ_8K - 1);
+		u8500_clk_init(U8500_CLKRST1_BASE, U8500_CLKRST2_BASE,
+			       U8500_CLKRST3_BASE, U8500_CLKRST5_BASE,
+			       U8500_CLKRST6_BASE);
+	} else if (cpu_is_u8540()) {
+		prcmu_early_init(U8500_PRCMU_BASE, SZ_8K + SZ_4K - 1);
+		ux500_pm_init(U8500_PRCMU_BASE, SZ_8K + SZ_4K - 1);
 		u8540_clk_init();
 }
 
