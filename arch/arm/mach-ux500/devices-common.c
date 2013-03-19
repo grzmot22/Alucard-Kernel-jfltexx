@@ -15,7 +15,7 @@
 
 #include <plat/gpio-nomadik.h>
 
-#include <mach/hardware.h>
+#include <mach/irqs.h>
 
 #include "devices-common.h"
 

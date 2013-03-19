@@ -43,13 +43,13 @@
 #include <plat/pincfg.h>
 #include <plat/gpio-nomadik.h>
 
-#include <mach/hardware.h>
 #include <mach/setup.h>
 #include <mach/devices.h>
 #include <mach/irqs.h>
 
 #include "pins-db8500.h"
 #include "ste-dma40-db8500.h"
+#include "db8500-regs.h"
 #include "devices-db8500.h"
 #include "board-mop500.h"
 #include "board-mop500-regulators.h"

@@ -14,8 +14,10 @@
 #include <plat/mtu.h>
 
 #include <mach/setup.h>
-#include <mach/hardware.h>
 #include <mach/irqs.h>
+
+#include "db8500-regs.h"
+#include "id.h"
 
 #ifdef CONFIG_HAVE_ARM_TWD
 static DEFINE_TWD_LOCAL_TIMER(u5500_twd_local_timer,

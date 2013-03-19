@@ -22,16 +22,12 @@
 #include <asm/hardware/gic.h>
 #include <asm/mach/map.h>
 
-#include <mach/hardware.h>
 #include <mach/setup.h>
 #include <mach/devices.h>
 
-void __iomem *_PRCMU_BASE;
-
-static const struct of_device_id ux500_dt_irq_match[] = {
-	{ .compatible = "arm,cortex-a9-gic", .data = gic_of_init, },
-	{},
-};
+#include "board-mop500.h"
+#include "db8500-regs.h"
+#include "id.h"
 
 void __init ux500_init_irq(void)
 {

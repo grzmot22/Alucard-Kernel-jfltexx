@@ -8,9 +8,7 @@
 #include <linux/usb/musb.h>
 #include <linux/dma-mapping.h>
 
-#include <plat/ste_dma40.h>
-#include <mach/hardware.h>
-#include <mach/usb.h>
+#include "db8500-regs.h"
 
 #define MUSB_DMA40_RX_CH { \
 		.mode = STEDMA40_MODE_LOGICAL, \

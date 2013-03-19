@@ -18,16 +18,17 @@
 #include <linux/io.h>
 
 #include <asm/mach/map.h>
-#include <asm/pmu.h>
-#include <plat/gpio-nomadik.h>
-#include <mach/hardware.h>
+#include <asm/mach/arch.h>
+
 #include <mach/setup.h>
 #include <mach/devices.h>
-#include <mach/usb.h>
-#include <mach/db8500-regs.h>
+#include <mach/irqs.h>
 
 #include "devices-db8500.h"
 #include "ste-dma40-db8500.h"
+#include "db8500-regs.h"
+#include "board-mop500.h"
+#include "id.h"
 
 /* minimum static i/o mapping required to boot U8500 platforms */
 static struct map_desc u8500_uart_io_desc[] __initdata = {
