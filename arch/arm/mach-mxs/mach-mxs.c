@@ -12,6 +12,9 @@
 
 #include <linux/clk.h>
 #include <linux/clkdev.h>
+#include <linux/clocksource.h>
+#include <linux/can/platform/flexcan.h>
+#include <linux/delay.h>
 #include <linux/err.h>
 #include <linux/init.h>
 #include <linux/init.h>
@@ -37,13 +40,14 @@ static const struct of_device_id mxs_irq_match[] __initconst = {
 
 static void __init mxs_dt_init_irq(void)
 {
-	icoll_init_irq();
-	of_irq_init(mxs_irq_match);
+	mx23_clocks_init();
+	clocksource_of_init();
 }
 
 static void __init imx23_timer_init(void)
 {
-	mx23_clocks_init();
+	mx28_clocks_init();
+	clocksource_of_init();
 }
 
 static struct sys_timer imx23_timer = {
