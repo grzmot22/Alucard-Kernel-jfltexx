@@ -77,6 +77,7 @@
 #include <linux/exportfs.h>
 #include <linux/mount.h>
 #include <linux/vfs.h>
+#include <linux/aio.h>
 #include <linux/parser.h>
 #include <linux/uio.h>
 #include <linux/writeback.h>
