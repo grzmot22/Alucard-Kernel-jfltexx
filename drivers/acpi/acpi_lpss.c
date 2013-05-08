@@ -28,7 +28,14 @@ ACPI_MODULE_NAME("acpi_lpss");
 
 struct lpss_device_desc {
 	bool clk_required;
-	const char *clk_parent;
+	const char *clkdev_name;
+	bool ltr_required;
+	unsigned int prv_offset;
+};
+
+static struct lpss_device_desc lpss_dma_desc = {
+	.clk_required = true,
+	.clkdev_name = "hclk",
 };
 
 struct lpss_private_data {
@@ -40,10 +47,19 @@ struct lpss_private_data {
 
 static struct lpss_device_desc lpt_dev_desc = {
 	.clk_required = true,
-	.clk_parent = "lpss_clk",
+	.prv_offset = 0x800,
+	.ltr_required = true,
+};
+
+static struct lpss_device_desc lpt_sdio_dev_desc = {
+	.prv_offset = 0x1000,
+	.ltr_required = true,
 };
 
 static const struct acpi_device_id acpi_lpss_device_ids[] = {
+	/* Generic LPSS devices */
+	{ "INTL9C60", (unsigned long)&lpss_dma_desc },
+
 	/* Lynxpoint LPSS devices */
 	{ "INT33C0", (unsigned long)&lpt_dev_desc },
 	{ "INT33C1", (unsigned long)&lpt_dev_desc },
@@ -75,17 +91,28 @@ static int register_device_clock(struct acpi_device *adev,
 				 struct lpss_private_data *pdata)
 {
 	const struct lpss_device_desc *dev_desc = pdata->dev_desc;
+	struct lpss_clk_data *clk_data;
 
 	if (!lpss_clk_dev)
 		lpt_register_clock_device();
 
-	if (!dev_desc->clk_parent || !pdata->mmio_base
-	    || pdata->mmio_size < LPSS_CLK_OFFSET + LPSS_CLK_SIZE)
+	clk_data = platform_get_drvdata(lpss_clk_dev);
+	if (!clk_data)
+		return -ENODEV;
+
+	if (dev_desc->clkdev_name) {
+		clk_register_clkdev(clk_data->clk, dev_desc->clkdev_name,
+				    dev_name(&adev->dev));
+		return 0;
+	}
+
+	if (!pdata->mmio_base
+	    || pdata->mmio_size < dev_desc->prv_offset + LPSS_CLK_SIZE)
 		return -ENODATA;
 
 	pdata->clk = clk_register_gate(NULL, dev_name(&adev->dev),
-				       dev_desc->clk_parent, 0,
-				       pdata->mmio_base + LPSS_CLK_OFFSET,
+				       clk_data->name, 0,
+				       pdata->mmio_base + dev_desc->prv_offset,
 				       0, 0, NULL);
 	if (IS_ERR(pdata->clk))
 		return PTR_ERR(pdata->clk);
