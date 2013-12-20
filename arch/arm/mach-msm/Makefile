@@ -4,9 +4,9 @@ obj-y += io.o dma.o memory.o
 ifndef CONFIG_ARM_ARCH_TIMER
 obj-y += timer.o
 endif
-obj-y += clock.o clock-voter.o clock-dummy.o
+obj-y += clock-voter.o
 obj-y += modem_notifier.o subsystem_map.o
-obj-$(CONFIG_DEBUG_FS) += nohlt.o clock-debug.o
+obj-$(CONFIG_DEBUG_FS) += nohlt.o
 obj-$(CONFIG_KEXEC) += msm_kexec.o
 
 obj-$(CONFIG_MSM_PROC_COMM) += proc_comm.o
