@@ -24,7 +24,6 @@
 #include <linux/mm.h>
 #include <asm/uaccess.h>
 
-#include <mach/msm_iomap.h>
 #include "rpm_stats.h"
 #define MSG_RAM_SIZE_PER_MASTER	32
 

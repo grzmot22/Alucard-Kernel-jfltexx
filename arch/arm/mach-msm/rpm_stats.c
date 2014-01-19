@@ -23,8 +23,6 @@
 #include <linux/types.h>
 #include <linux/mm.h>
 #include <asm/uaccess.h>
-
-#include <mach/msm_iomap.h>
 #include "rpm_stats.h"
 
 enum {
