@@ -32,7 +32,6 @@
 #include <linux/platform_device.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
-#include <mach/socinfo.h>
 #include <mach/msm_smd.h>
 #include <mach/rpm-smd.h>
 #define CREATE_TRACE_POINTS
