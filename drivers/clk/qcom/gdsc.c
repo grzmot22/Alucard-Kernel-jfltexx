@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -55,7 +55,31 @@ static int gdsc_enable(struct regulator_dev *rdev)
 {
 	struct gdsc *sc = rdev_get_drvdata(rdev);
 	uint32_t regval;
-	int ret;
+	int i, ret;
+
+	if (sc->toggle_logic) {
+		regval = readl_relaxed(sc->gdscr);
+		if (regval & HW_CONTROL_MASK) {
+			dev_warn(&rdev->dev, "Invalid enable while %s is under HW control\n",
+				 sc->rdesc.name);
+			return -EBUSY;
+		}
+
+		regval &= ~SW_COLLAPSE_MASK;
+		writel_relaxed(regval, sc->gdscr);
+
+		ret = readl_tight_poll_timeout(sc->gdscr, regval,
+					regval & PWR_ON_MASK, TIMEOUT_US);
+		if (ret) {
+			dev_err(&rdev->dev, "%s enable timed out: 0x%x\n",
+				sc->rdesc.name, regval);
+			return ret;
+		}
+	} else {
+		for (i = 0; i < sc->clock_count; i++)
+			clk_reset(sc->clocks[i], CLK_RESET_DEASSERT);
+		sc->resets_asserted = false;
+	}
 
 	regval = readl_relaxed(sc->gdscr);
 	regval &= ~SW_COLLAPSE_MASK;
@@ -81,16 +105,113 @@ static int gdsc_disable(struct regulator_dev *rdev)
 {
 	struct gdsc *sc = rdev_get_drvdata(rdev);
 	uint32_t regval;
+	int i, ret = 0;
+
+	for (i = sc->clock_count-1; i >= 0; i--) {
+		if (sc->toggle_mem)
+			clk_set_flags(sc->clocks[i], CLKFLAG_NORETAIN_MEM);
+		if (sc->toggle_periph)
+			clk_set_flags(sc->clocks[i], CLKFLAG_NORETAIN_PERIPH);
+	}
+
+	if (sc->toggle_logic) {
+		regval = readl_relaxed(sc->gdscr);
+		if (regval & HW_CONTROL_MASK) {
+			dev_warn(&rdev->dev, "Invalid disable while %s is under HW control\n",
+				 sc->rdesc.name);
+			return -EBUSY;
+		}
+
+		regval |= SW_COLLAPSE_MASK;
+		writel_relaxed(regval, sc->gdscr);
+
+		ret = readl_tight_poll_timeout(sc->gdscr, regval,
+					       !(regval & PWR_ON_MASK),
+						TIMEOUT_US);
+		if (ret)
+			dev_err(&rdev->dev, "%s disable timed out: 0x%x\n",
+				sc->rdesc.name, regval);
+	} else {
+		for (i = sc->clock_count-1; i >= 0; i--)
+			clk_reset(sc->clocks[i], CLK_RESET_ASSERT);
+		sc->resets_asserted = true;
+	}
+
+	return ret;
+}
+
+static unsigned int gdsc_get_mode(struct regulator_dev *rdev)
+{
+	struct gdsc *sc = rdev_get_drvdata(rdev);
+	uint32_t regval;
+
+	regval = readl_relaxed(sc->gdscr);
+	if (regval & HW_CONTROL_MASK)
+		return REGULATOR_MODE_FAST;
+	return REGULATOR_MODE_NORMAL;
+}
+
+static int gdsc_set_mode(struct regulator_dev *rdev, unsigned int mode)
+{
+	struct gdsc *sc = rdev_get_drvdata(rdev);
+	uint32_t regval;
 	int ret;
 
 	regval = readl_relaxed(sc->gdscr);
 	regval |= SW_COLLAPSE_MASK;
 	writel_relaxed(regval, sc->gdscr);
 
-	ret = readl_tight_poll_timeout(sc->gdscr, regval,
-				       !(regval & PWR_ON_MASK), TIMEOUT_US);
-	if (ret)
-		dev_err(&rdev->dev, "%s disable timed out\n", sc->rdesc.name);
+	/*
+	 * HW control can only be enable/disabled when SW_COLLAPSE
+	 * indicates on.
+	 */
+	if (regval & SW_COLLAPSE_MASK) {
+		dev_err(&rdev->dev, "can't enable hw collapse now\n");
+		return -EBUSY;
+	}
+
+	switch (mode) {
+	case REGULATOR_MODE_FAST:
+		/* Turn on HW trigger mode */
+		regval |= HW_CONTROL_MASK;
+		writel_relaxed(regval, sc->gdscr);
+		/*
+		 * There may be a race with internal HW trigger signal,
+		 * that will result in GDSC going through a power down and
+		 * up cycle.  In case HW trigger signal is controlled by
+		 * firmware that also poll same status bits as we do, FW
+		 * might read an 'on' status before the GDSC can finish
+		 * power cycle.  We wait 1us before returning to ensure
+		 * FW can't immediately poll the status bit.
+		 */
+		mb();
+		udelay(1);
+		break;
+
+	case REGULATOR_MODE_NORMAL:
+		/* Turn off HW trigger mode */
+		regval &= ~HW_CONTROL_MASK;
+		writel_relaxed(regval, sc->gdscr);
+		/*
+		 * There may be a race with internal HW trigger signal,
+		 * that will result in GDSC going through a power down and
+		 * up cycle.  If we poll too early, status bit will
+		 * indicate 'on' before the GDSC can finish the power cycle.
+		 * Account for this case by waiting 1us before polling.
+		 */
+		mb();
+		udelay(1);
+		ret = readl_tight_poll_timeout(sc->gdscr, regval,
+					regval & PWR_ON_MASK, TIMEOUT_US);
+		if (ret) {
+			dev_err(&rdev->dev, "%s set_mode timed out: 0x%x\n",
+				sc->rdesc.name, regval);
+			return ret;
+		}
+		break;
+	default:
+		return -EINVAL;
+	}
 
 	return ret;
 }
@@ -151,8 +272,52 @@ static int __devinit gdsc_probe(struct platform_device *pdev)
 	regval |= EN_REST_WAIT_VAL | EN_FEW_WAIT_VAL | CLK_DIS_WAIT_VAL;
 	writel_relaxed(regval, sc->gdscr);
 
-	sc->rdev = regulator_register(&sc->rdesc, &pdev->dev, init_data, sc,
-				      pdev->dev.of_node);
+	retain_mem = of_property_read_bool(pdev->dev.of_node,
+					    "qcom,retain-mem");
+	sc->toggle_mem = !retain_mem;
+	retain_periph = of_property_read_bool(pdev->dev.of_node,
+					    "qcom,retain-periph");
+	sc->toggle_periph = !retain_periph;
+	sc->toggle_logic = !of_property_read_bool(pdev->dev.of_node,
+						"qcom,skip-logic-collapse");
+	support_hw_trigger = of_property_read_bool(pdev->dev.of_node,
+						    "qcom,support-hw-trigger");
+	if (support_hw_trigger) {
+		init_data->constraints.valid_ops_mask |= REGULATOR_CHANGE_MODE;
+		init_data->constraints.valid_modes_mask |=
+				REGULATOR_MODE_NORMAL | REGULATOR_MODE_FAST;
+	}
+
+	if (!sc->toggle_logic) {
+		regval &= ~SW_COLLAPSE_MASK;
+		writel_relaxed(regval, sc->gdscr);
+
+		ret = readl_tight_poll_timeout(sc->gdscr, regval,
+					regval & PWR_ON_MASK, TIMEOUT_US);
+		if (ret) {
+			dev_err(&pdev->dev, "%s enable timed out: 0x%x\n",
+				sc->rdesc.name, regval);
+			return ret;
+		}
+	}
+
+	for (i = 0; i < sc->clock_count; i++) {
+		if (retain_mem || (regval & PWR_ON_MASK))
+			clk_set_flags(sc->clocks[i], CLKFLAG_RETAIN_MEM);
+		else
+			clk_set_flags(sc->clocks[i], CLKFLAG_NORETAIN_MEM);
+
+		if (retain_periph || (regval & PWR_ON_MASK))
+			clk_set_flags(sc->clocks[i], CLKFLAG_RETAIN_PERIPH);
+		else
+			clk_set_flags(sc->clocks[i], CLKFLAG_NORETAIN_PERIPH);
+	}
+
+	reg_config.dev = &pdev->dev;
+	reg_config.init_data = init_data;
+	reg_config.driver_data = sc;
+	reg_config.of_node = pdev->dev.of_node;
+	sc->rdev = regulator_register(&sc->rdesc, &reg_config);
 	if (IS_ERR(sc->rdev)) {
 		dev_err(&pdev->dev, "regulator_register(\"%s\") failed.\n",
 			sc->rdesc.name);
