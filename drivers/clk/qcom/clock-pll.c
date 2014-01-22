@@ -44,8 +44,14 @@
 static DEFINE_SPINLOCK(pll_reg_lock);
 
 #define ENABLE_WAIT_MAX_LOOPS 200
+#define PLL_LOCKED_BIT BIT(16)
 
-int pll_vote_clk_enable(struct clk *c)
+static long fixed_pll_clk_round_rate(struct clk *c, unsigned long rate)
+{
+	return c->rate;
+}
+
+static int pll_vote_clk_enable(struct clk *c)
 {
 	u32 ena, count;
 	unsigned long flags;
@@ -112,7 +118,7 @@ struct clk_ops clk_ops_pll_vote = {
 	.enable = pll_vote_clk_enable,
 	.disable = pll_vote_clk_disable,
 	.is_enabled = pll_vote_clk_is_enabled,
-	.get_parent = pll_vote_clk_get_parent,
+	.round_rate = fixed_pll_clk_round_rate,
 	.handoff = pll_vote_clk_handoff,
 };
 
@@ -425,11 +431,13 @@ static enum handoff pll_clk_handoff(struct clk *c)
 	return HANDOFF_ENABLED_CLK;
 }
 
-struct clk_ops clk_ops_pll = {
-	.enable = pll_clk_enable,
-	.disable = pll_clk_disable,
-	.handoff = pll_clk_handoff,
-	.is_enabled = pll_clk_is_enabled,
+struct clk_ops clk_ops_pll_acpu_vote = {
+	.enable = pll_acpu_vote_clk_enable,
+	.disable = pll_acpu_vote_clk_disable,
+	.round_rate = fixed_pll_clk_round_rate,
+	.is_enabled = pll_vote_clk_is_enabled,
+	.handoff = pll_acpu_vote_clk_handoff,
+	.list_registers = pll_vote_clk_list_registers,
 };
 
 static void __init __set_fsm_mode(void __iomem *mode_reg,

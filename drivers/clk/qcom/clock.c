@@ -1,7 +1,7 @@
 /* arch/arm/mach-msm/clock.c
  *
  * Copyright (C) 2007 Google, Inc.
- * Copyright (c) 2007-2012, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2007-2014, The Linux Foundation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -338,14 +338,19 @@ int clk_set_rate(struct clk *clk, unsigned long rate)
 		return -EINVAL;
 	name = clk->dbg_name;
 
-	if (!clk->ops->set_rate)
-		return -ENOSYS;
+	if (!is_rate_valid(clk, rate))
+		return -EINVAL;
 
 	mutex_lock(&clk->prepare_lock);
 
 	/* Return early if the rate isn't going to change */
 	if (clk->rate == rate)
 		goto out;
+
+	if (!clk->ops->set_rate) {
+		rc = -ENOSYS;
+		goto out;
+	}
 
 	trace_clock_set_rate(name, rate, raw_smp_processor_id());
 	if (clk->prepare_count) {
