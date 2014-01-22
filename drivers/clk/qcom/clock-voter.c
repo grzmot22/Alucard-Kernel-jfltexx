@@ -1,5 +1,4 @@
-/*
- * Copyright (c) 2010-2011, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2010-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -14,8 +13,8 @@
 #include <linux/err.h>
 #include <linux/mutex.h>
 #include <linux/clk.h>
-#include <mach/clk-provider.h>
-#include "clock-voter.h"
+#include <linux/clk/msm-clk-provider.h>
+#include <soc/qcom/clock-voter.h>
 
 static DEFINE_MUTEX(voter_clk_lock);
 

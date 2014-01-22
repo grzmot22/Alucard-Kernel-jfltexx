@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -15,21 +15,11 @@
 #include <linux/kernel.h>
 #include <linux/delay.h>
 #include <linux/err.h>
-#include <linux/remote_spinlock.h>
-
-#include <mach/scm-io.h>
-#include <mach/msm_iomap.h>
+#include <linux/clk.h>
+#include <linux/io.h>
+#include <soc/qcom/clock-pll.h>
 
 #include "clock.h"
-#include "clock-pll.h"
-#include "smd_private.h"
-
-#ifdef CONFIG_MSM_SECURE_IO
-#undef readl_relaxed
-#undef writel_relaxed
-#define readl_relaxed secure_readl
-#define writel_relaxed secure_writel
-#endif
 
 #define PLL_OUTCTRL BIT(0)
 #define PLL_BYPASSNL BIT(1)

@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2010-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -13,10 +13,8 @@
 
 #include <linux/err.h>
 #include <linux/mutex.h>
-#include <mach/clk-provider.h>
-
-#include "rpm_resources.h"
-#include "clock-rpm.h"
+#include <linux/clk/msm-clk-provider.h>
+#include <soc/qcom/clock-rpm.h>
 
 #define __clk_rpmrs_set_rate(r, value, ctx) \
 	((r)->rpmrs_data->set_rate_fn((r), (value), (ctx)))
