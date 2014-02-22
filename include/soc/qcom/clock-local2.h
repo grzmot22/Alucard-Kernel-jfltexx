@@ -159,6 +159,26 @@ static inline struct measure_clk *to_measure_clk(struct clk *clk)
 	return container_of(clk, struct measure_clk, c);
 }
 
+/**
+ * struct gate_clk
+ * @c: clk
+ * @en_mask: ORed with @en_reg to enable gate clk
+ * @en_reg: register used to enable/disable gate clk
+ * @base: pointer to base address of ioremapped registers
+ */
+struct gate_clk {
+	struct clk c;
+	const u32 en_mask;
+	const u32 en_reg;
+	const unsigned int delay_us;
+	void *const __iomem *base;
+};
+
+static inline struct gate_clk *to_gate_clk(struct clk *clk)
+{
+	return container_of(clk, struct gate_clk, c);
+}
+
 /*
  * Generic set-rate implementations
  */

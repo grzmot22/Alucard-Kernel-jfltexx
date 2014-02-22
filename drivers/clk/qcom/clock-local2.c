@@ -594,6 +594,556 @@ static enum handoff local_vote_clk_handoff(struct clk *c)
 	return HANDOFF_ENABLED_CLK;
 }
 
+/* Sample clock for 'ticks' reference clock ticks. */
+static u32 run_measurement(unsigned ticks, void __iomem *ctl_reg,
+				void __iomem *status_reg)
+{
+	/* Stop counters and set the XO4 counter start value. */
+	writel_relaxed(ticks, ctl_reg);
+
+	/* Wait for timer to become ready. */
+	while ((readl_relaxed(status_reg) & BIT(25)) != 0)
+		cpu_relax();
+
+	/* Run measurement and wait for completion. */
+	writel_relaxed(BIT(20)|ticks, ctl_reg);
+	while ((readl_relaxed(status_reg) & BIT(25)) == 0)
+		cpu_relax();
+
+	/* Return measured ticks. */
+	return readl_relaxed(status_reg) & BM(24, 0);
+}
+
+/*
+ * Perform a hardware rate measurement for a given clock.
+ * FOR DEBUG USE ONLY: Measurements take ~15 ms!
+ */
+unsigned long measure_get_rate(struct clk *c)
+{
+	unsigned long flags;
+	u32 gcc_xo4_reg_backup;
+	u64 raw_count_short, raw_count_full;
+	unsigned ret;
+	u32 sample_ticks = 0x10000;
+	u32 multiplier = 0x1;
+	struct measure_clk_data *data = to_mux_clk(c)->priv;
+
+	ret = clk_prepare_enable(data->cxo);
+	if (ret) {
+		pr_warn("CXO clock failed to enable. Can't measure\n");
+		return 0;
+	}
+
+	spin_lock_irqsave(&local_clock_reg_lock, flags);
+
+	/* Enable CXO/4 and RINGOSC branch. */
+	gcc_xo4_reg_backup = readl_relaxed(*data->base + data->xo_div4_cbcr);
+	writel_relaxed(0x1, *data->base + data->xo_div4_cbcr);
+
+	/*
+	 * The ring oscillator counter will not reset if the measured clock
+	 * is not running.  To detect this, run a short measurement before
+	 * the full measurement.  If the raw results of the two are the same
+	 * then the clock must be off.
+	 */
+
+	/* Run a short measurement. (~1 ms) */
+	raw_count_short = run_measurement(0x1000, *data->base + data->ctl_reg,
+					  *data->base + data->status_reg);
+	/* Run a full measurement. (~14 ms) */
+	raw_count_full = run_measurement(sample_ticks,
+					 *data->base + data->ctl_reg,
+					 *data->base + data->status_reg);
+	writel_relaxed(gcc_xo4_reg_backup, *data->base + data->xo_div4_cbcr);
+
+	/* Return 0 if the clock is off. */
+	if (raw_count_full == raw_count_short) {
+		ret = 0;
+	} else {
+		/* Compute rate in Hz. */
+		raw_count_full = ((raw_count_full * 10) + 15) * 4800000;
+		do_div(raw_count_full, ((sample_ticks * 10) + 35));
+		ret = (raw_count_full * multiplier);
+	}
+	writel_relaxed(data->plltest_val, *data->base + data->plltest_reg);
+	spin_unlock_irqrestore(&local_clock_reg_lock, flags);
+
+	clk_disable_unprepare(data->cxo);
+
+	return ret;
+}
+
+struct frac_entry {
+	int num;
+	int den;
+};
+
+static void __iomem *local_vote_clk_list_registers(struct clk *c, int n,
+				struct clk_register_data **regs, u32 *size)
+{
+	struct local_vote_clk *vclk = to_local_vote_clk(c);
+	static struct clk_register_data data1[] = {
+		{"CBCR", 0x0},
+	};
+	static struct clk_register_data data2[] = {
+		{"APPS_VOTE", 0x0},
+		{"APPS_SLEEP_VOTE", 0x4},
+	};
+	switch (n) {
+	case 0:
+		*regs = data1;
+		*size = ARRAY_SIZE(data1);
+		return CBCR_REG(vclk);
+	case 1:
+		*regs = data2;
+		*size = ARRAY_SIZE(data2);
+		return VOTE_REG(vclk);
+	default:
+		return ERR_PTR(-EINVAL);
+	}
+}
+
+static struct frac_entry frac_table_675m[] = {	/* link rate of 270M */
+	{52, 295},	/* 119 M */
+	{11, 57},	/* 130.25 M */
+	{63, 307},	/* 138.50 M */
+	{11, 50},	/* 148.50 M */
+	{47, 206},	/* 154 M */
+	{31, 100},	/* 205.25 M */
+	{107, 269},	/* 268.50 M */
+	{0, 0},
+};
+
+static struct frac_entry frac_table_810m[] = { /* Link rate of 162M */
+	{31, 211},	/* 119 M */
+	{32, 199},	/* 130.25 M */
+	{63, 307},	/* 138.50 M */
+	{11, 60},	/* 148.50 M */
+	{50, 263},	/* 154 M */
+	{31, 120},	/* 205.25 M */
+	{119, 359},	/* 268.50 M */
+	{0, 0},
+};
+
+static int set_rate_edp_pixel(struct clk *clk, unsigned long rate)
+{
+	struct rcg_clk *rcg = to_rcg_clk(clk);
+	struct clk_freq_tbl *pixel_freq = rcg->current_freq;
+	struct frac_entry *frac;
+	int delta = 100000;
+	s64 request;
+	s64 src_rate;
+
+	src_rate = clk_get_rate(clk->parent);
+
+	if (src_rate == 810000000)
+		frac = frac_table_810m;
+	else
+		frac = frac_table_675m;
+
+	while (frac->num) {
+		request = rate;
+		request *= frac->den;
+		request = div_s64(request, frac->num);
+		if ((src_rate < (request - delta)) ||
+			(src_rate > (request + delta))) {
+			frac++;
+			continue;
+		}
+
+		pixel_freq->div_src_val &= ~BM(4, 0);
+		if (frac->den == frac->num) {
+			pixel_freq->m_val = 0;
+			pixel_freq->n_val = 0;
+		} else {
+			pixel_freq->m_val = frac->num;
+			pixel_freq->n_val = ~(frac->den - frac->num);
+			pixel_freq->d_val = ~frac->den;
+		}
+		set_rate_mnd(rcg, pixel_freq);
+		return 0;
+	}
+	return -EINVAL;
+}
+
+enum handoff byte_rcg_handoff(struct clk *clk)
+{
+	struct rcg_clk *rcg = to_rcg_clk(clk);
+	u32 div_val;
+	unsigned long pre_div_rate, parent_rate = clk_get_rate(clk->parent);
+
+	/* If the pre-divider is used, find the rate after the division */
+	div_val = readl_relaxed(CFG_RCGR_REG(rcg)) & CFG_RCGR_DIV_MASK;
+	if (div_val > 1)
+		pre_div_rate = parent_rate / ((div_val + 1) >> 1);
+	else
+		pre_div_rate = parent_rate;
+
+	clk->rate = pre_div_rate;
+
+	if (readl_relaxed(CMD_RCGR_REG(rcg)) & CMD_RCGR_ROOT_STATUS_BIT)
+		return HANDOFF_DISABLED_CLK;
+
+	return HANDOFF_ENABLED_CLK;
+}
+
+static int set_rate_byte(struct clk *clk, unsigned long rate)
+{
+	struct rcg_clk *rcg = to_rcg_clk(clk);
+	struct clk *pll = clk->parent;
+	unsigned long source_rate, div;
+	struct clk_freq_tbl *byte_freq = rcg->current_freq;
+	int rc;
+
+	if (rate == 0)
+		return -EINVAL;
+
+	rc = clk_set_rate(pll, rate);
+	if (rc)
+		return rc;
+
+	source_rate = clk_round_rate(pll, rate);
+	if ((2 * source_rate) % rate)
+		return -EINVAL;
+
+	div = ((2 * source_rate)/rate) - 1;
+	if (div > CFG_RCGR_DIV_MASK)
+		return -EINVAL;
+
+	byte_freq->div_src_val &= ~CFG_RCGR_DIV_MASK;
+	byte_freq->div_src_val |= BVAL(4, 0, div);
+	set_rate_hid(rcg, byte_freq);
+
+	return 0;
+}
+
+enum handoff pixel_rcg_handoff(struct clk *clk)
+{
+	struct rcg_clk *rcg = to_rcg_clk(clk);
+	u32 div_val = 0, mval = 0, nval = 0, cfg_regval;
+	unsigned long pre_div_rate, parent_rate = clk_get_rate(clk->parent);
+
+	cfg_regval = readl_relaxed(CFG_RCGR_REG(rcg));
+
+	/* If the pre-divider is used, find the rate after the division */
+	div_val = cfg_regval & CFG_RCGR_DIV_MASK;
+	if (div_val > 1)
+		pre_div_rate = parent_rate / ((div_val + 1) >> 1);
+	else
+		pre_div_rate = parent_rate;
+
+	clk->rate = pre_div_rate;
+
+	/*
+	 * Pixel clocks have one frequency entry in their frequency table.
+	 * Update that entry.
+	 */
+	if (rcg->current_freq) {
+		rcg->current_freq->div_src_val &= ~CFG_RCGR_DIV_MASK;
+		rcg->current_freq->div_src_val |= div_val;
+	}
+
+	/* If MND is used, find the rate after the MND division */
+	if ((cfg_regval & MND_MODE_MASK) == MND_DUAL_EDGE_MODE_BVAL) {
+		mval = readl_relaxed(M_REG(rcg));
+		nval = readl_relaxed(N_REG(rcg));
+		if (!nval)
+			return HANDOFF_DISABLED_CLK;
+		nval = (~nval) + mval;
+		if (rcg->current_freq) {
+			rcg->current_freq->n_val = ~(nval - mval);
+			rcg->current_freq->m_val = mval;
+			rcg->current_freq->d_val = ~nval;
+		}
+		clk->rate = (pre_div_rate * mval) / nval;
+	}
+
+	if (readl_relaxed(CMD_RCGR_REG(rcg)) & CMD_RCGR_ROOT_STATUS_BIT)
+		return HANDOFF_DISABLED_CLK;
+
+	return HANDOFF_ENABLED_CLK;
+}
+
+static long round_rate_pixel(struct clk *clk, unsigned long rate)
+{
+	int frac_num[] = {3, 2, 4, 1};
+	int frac_den[] = {8, 9, 9, 1};
+	int delta = 100000;
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(frac_num); i++) {
+		unsigned long request = (rate * frac_den[i]) / frac_num[i];
+		unsigned long src_rate;
+
+		src_rate = clk_round_rate(clk->parent, request);
+		if ((src_rate < (request - delta)) ||
+			(src_rate > (request + delta)))
+			continue;
+
+		return (src_rate * frac_num[i]) / frac_den[i];
+	}
+
+	return -EINVAL;
+}
+
+
+static int set_rate_pixel(struct clk *clk, unsigned long rate)
+{
+	struct rcg_clk *rcg = to_rcg_clk(clk);
+	struct clk_freq_tbl *pixel_freq = rcg->current_freq;
+	int frac_num[] = {3, 2, 4, 1};
+	int frac_den[] = {8, 9, 9, 1};
+	int delta = 100000;
+	int i, rc;
+
+	for (i = 0; i < ARRAY_SIZE(frac_num); i++) {
+		unsigned long request = (rate * frac_den[i]) / frac_num[i];
+		unsigned long src_rate;
+
+		src_rate = clk_round_rate(clk->parent, request);
+		if ((src_rate < (request - delta)) ||
+			(src_rate > (request + delta)))
+			continue;
+
+		rc =  clk_set_rate(clk->parent, src_rate);
+		if (rc)
+			return rc;
+
+		pixel_freq->div_src_val &= ~BM(4, 0);
+		if (frac_den[i] == frac_num[i]) {
+			pixel_freq->m_val = 0;
+			pixel_freq->n_val = 0;
+		} else {
+			pixel_freq->m_val = frac_num[i];
+			pixel_freq->n_val = ~(frac_den[i] - frac_num[i]);
+			pixel_freq->d_val = ~frac_den[i];
+		}
+		set_rate_mnd(rcg, pixel_freq);
+		return 0;
+	}
+	return -EINVAL;
+}
+
+/*
+ * Unlike other clocks, the HDMI rate is adjusted through PLL
+ * re-programming. It is also routed through an HID divider.
+ */
+static int rcg_clk_set_rate_hdmi(struct clk *c, unsigned long rate)
+{
+	struct rcg_clk *rcg = to_rcg_clk(c);
+	struct clk_freq_tbl *nf = rcg->freq_tbl;
+	int rc;
+
+	rc = clk_set_rate(nf->src_clk, rate);
+	if (rc < 0)
+		goto out;
+	set_rate_hid(rcg, nf);
+
+	rcg->current_freq = nf;
+out:
+	return rc;
+}
+
+static struct clk *rcg_hdmi_clk_get_parent(struct clk *c)
+{
+	struct rcg_clk *rcg = to_rcg_clk(c);
+	struct clk_freq_tbl *freq = rcg->freq_tbl;
+	u32 cmd_rcgr_regval;
+
+	/* Is there a pending configuration? */
+	cmd_rcgr_regval = readl_relaxed(CMD_RCGR_REG(rcg));
+	if (cmd_rcgr_regval & CMD_RCGR_CONFIG_DIRTY_MASK)
+		return NULL;
+
+	rcg->current_freq->freq_hz = clk_get_rate(c->parent);
+
+	return freq->src_clk;
+}
+
+static int rcg_clk_set_rate_edp(struct clk *c, unsigned long rate)
+{
+	struct clk_freq_tbl *nf;
+	struct rcg_clk *rcg = to_rcg_clk(c);
+	int rc;
+
+	for (nf = rcg->freq_tbl; nf->freq_hz != rate; nf++)
+		if (nf->freq_hz == FREQ_END) {
+			rc = -EINVAL;
+			goto out;
+		}
+
+	rc = clk_set_rate(nf->src_clk, rate);
+	if (rc < 0)
+		goto out;
+	set_rate_hid(rcg, nf);
+
+	rcg->current_freq = nf;
+	c->parent = nf->src_clk;
+out:
+	return rc;
+}
+
+static struct clk *edp_clk_get_parent(struct clk *c)
+{
+	struct rcg_clk *rcg = to_rcg_clk(c);
+	struct clk *clk;
+	struct clk_freq_tbl *freq;
+	unsigned long rate;
+	u32 cmd_rcgr_regval;
+
+	/* Is there a pending configuration? */
+	cmd_rcgr_regval = readl_relaxed(CMD_RCGR_REG(rcg));
+	if (cmd_rcgr_regval & CMD_RCGR_CONFIG_DIRTY_MASK)
+		return NULL;
+
+	/* Figure out what rate the rcg is running at */
+	for (freq = rcg->freq_tbl; freq->freq_hz != FREQ_END; freq++) {
+		clk = freq->src_clk;
+		if (clk && clk->ops->get_rate) {
+			rate = clk->ops->get_rate(clk);
+			if (rate == freq->freq_hz)
+				break;
+		}
+	}
+
+	/* No known frequency found */
+	if (freq->freq_hz == FREQ_END)
+		return NULL;
+
+	rcg->current_freq = freq;
+	return freq->src_clk;
+}
+
+static int gate_clk_enable(struct clk *c)
+{
+	unsigned long flags;
+	u32 regval;
+	struct gate_clk *g = to_gate_clk(c);
+
+	spin_lock_irqsave(&local_clock_reg_lock, flags);
+	regval = readl_relaxed(GATE_EN_REG(g));
+	regval |= g->en_mask;
+	writel_relaxed(regval, GATE_EN_REG(g));
+	spin_unlock_irqrestore(&local_clock_reg_lock, flags);
+	if (g->delay_us)
+		udelay(g->delay_us);
+
+	return 0;
+}
+
+static void gate_clk_disable(struct clk *c)
+{
+	unsigned long flags;
+	u32 regval;
+	struct gate_clk *g = to_gate_clk(c);
+
+	spin_lock_irqsave(&local_clock_reg_lock, flags);
+	regval = readl_relaxed(GATE_EN_REG(g));
+	regval &= ~(g->en_mask);
+	writel_relaxed(regval, GATE_EN_REG(g));
+	spin_unlock_irqrestore(&local_clock_reg_lock, flags);
+	if (g->delay_us)
+		udelay(g->delay_us);
+}
+
+static void __iomem *gate_clk_list_registers(struct clk *c, int n,
+				struct clk_register_data **regs, u32 *size)
+{
+	struct gate_clk *g = to_gate_clk(c);
+	static struct clk_register_data data[] = {
+		{"EN_REG", 0x0},
+	};
+	if (n)
+		return ERR_PTR(-EINVAL);
+
+	*regs = data;
+	*size = ARRAY_SIZE(data);
+	return GATE_EN_REG(g);
+}
+
+static enum handoff gate_clk_handoff(struct clk *c)
+{
+	struct gate_clk *g = to_gate_clk(c);
+	u32 regval;
+
+	regval = readl_relaxed(GATE_EN_REG(g));
+	if (regval & g->en_mask)
+		return HANDOFF_ENABLED_CLK;
+
+	return HANDOFF_DISABLED_CLK;
+}
+
+static int reset_clk_rst(struct clk *c, enum clk_reset_action action)
+{
+	struct reset_clk *rst = to_reset_clk(c);
+
+	if (!rst->reset_reg)
+		return -EPERM;
+
+	return __branch_clk_reset(RST_REG(rst), action);
+}
+
+static DEFINE_SPINLOCK(mux_reg_lock);
+
+static int mux_reg_enable(struct mux_clk *clk)
+{
+	u32 regval;
+	unsigned long flags;
+	u32 offset = clk->en_reg ? clk->en_offset : clk->offset;
+
+	spin_lock_irqsave(&mux_reg_lock, flags);
+	regval = readl_relaxed(*clk->base + offset);
+	regval |= clk->en_mask;
+	writel_relaxed(regval, *clk->base + offset);
+	/* Ensure enable request goes through before returning */
+	mb();
+	spin_unlock_irqrestore(&mux_reg_lock, flags);
+
+	return 0;
+}
+
+static void mux_reg_disable(struct mux_clk *clk)
+{
+	u32 regval;
+	unsigned long flags;
+	u32 offset = clk->en_reg ? clk->en_offset : clk->offset;
+
+	spin_lock_irqsave(&mux_reg_lock, flags);
+	regval = readl_relaxed(*clk->base + offset);
+	regval &= ~clk->en_mask;
+	writel_relaxed(regval, *clk->base + offset);
+	spin_unlock_irqrestore(&mux_reg_lock, flags);
+}
+
+static int mux_reg_set_mux_sel(struct mux_clk *clk, int sel)
+{
+	u32 regval;
+	unsigned long flags;
+
+	spin_lock_irqsave(&mux_reg_lock, flags);
+	regval = readl_relaxed(*clk->base + clk->offset);
+	regval &= ~(clk->mask << clk->shift);
+	regval |= (sel & clk->mask) << clk->shift;
+	writel_relaxed(regval, *clk->base + clk->offset);
+	/* Ensure switch request goes through before returning */
+	mb();
+	spin_unlock_irqrestore(&mux_reg_lock, flags);
+
+	return 0;
+}
+
+static int mux_reg_get_mux_sel(struct mux_clk *clk)
+{
+	u32 regval = readl_relaxed(*clk->base + clk->offset);
+	return !!((regval >> clk->shift) & clk->mask);
+}
+
+static bool mux_reg_is_enabled(struct mux_clk *clk)
+{
+	u32 regval = readl_relaxed(*clk->base + clk->offset);
+	return !!(regval & clk->en_mask);
+}
+
 struct clk_ops clk_ops_empty;
 
 struct clk_ops clk_ops_rcg = {
@@ -631,4 +1181,22 @@ struct clk_ops clk_ops_vote = {
 	.disable = local_vote_clk_disable,
 	.reset = local_vote_clk_reset,
 	.handoff = local_vote_clk_handoff,
+	.list_registers = local_vote_clk_list_registers,
+};
+
+struct clk_ops clk_ops_gate = {
+	.enable = gate_clk_enable,
+	.disable = gate_clk_disable,
+	.get_rate = parent_get_rate,
+	.round_rate = parent_round_rate,
+	.handoff = gate_clk_handoff,
+	.list_registers = gate_clk_list_registers,
+};
+
+struct clk_mux_ops mux_reg_ops = {
+	.enable = mux_reg_enable,
+	.disable = mux_reg_disable,
+	.set_mux_sel = mux_reg_set_mux_sel,
+	.get_mux_sel = mux_reg_get_mux_sel,
+	.is_enabled = mux_reg_is_enabled,
 };
