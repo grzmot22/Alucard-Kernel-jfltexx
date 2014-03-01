@@ -26,20 +26,17 @@
 #define PLL_RESET_N BIT(2)
 #define PLL_MODE_MASK BM(3, 0)
 
-#define PLL_EN_REG(x) ((x)->base ? (*(x)->base + (u32)((x)->en_reg)) : \
-				((x)->en_reg))
-#define PLL_STATUS_REG(x) ((x)->base ? (*(x)->base + (u32)((x)->status_reg)) : \
-				((x)->status_reg))
-#define PLL_MODE_REG(x) ((x)->base ? (*(x)->base + (u32)((x)->mode_reg)) : \
-				((x)->mode_reg))
-#define PLL_L_REG(x) ((x)->base ? (*(x)->base + (u32)((x)->l_reg)) : \
-				((x)->l_reg))
-#define PLL_M_REG(x) ((x)->base ? (*(x)->base + (u32)((x)->m_reg)) : \
-				((x)->m_reg))
-#define PLL_N_REG(x) ((x)->base ? (*(x)->base + (u32)((x)->n_reg)) : \
-				((x)->n_reg))
-#define PLL_CONFIG_REG(x) ((x)->base ? (*(x)->base + (u32)((x)->config_reg)) : \
-				((x)->config_reg))
+#define PLL_EN_REG(x)		(*(x)->base + (unsigned long) (x)->en_reg)
+#define PLL_STATUS_REG(x)	(*(x)->base + (unsigned long) (x)->status_reg)
+#define PLL_MODE_REG(x)		(*(x)->base + (unsigned long) (x)->mode_reg)
+#define PLL_L_REG(x)		(*(x)->base + (unsigned long) (x)->l_reg)
+#define PLL_M_REG(x)		(*(x)->base + (unsigned long) (x)->m_reg)
+#define PLL_N_REG(x)		(*(x)->base + (unsigned long) (x)->n_reg)
+#define PLL_CONFIG_REG(x)	(*(x)->base + (unsigned long) (x)->config_reg)
+#define PLL_CFG_ALT_REG(x)	(*(x)->base + (unsigned long) \
+							(x)->config_alt_reg)
+#define PLL_CFG_CTL_REG(x)	(*(x)->base + (unsigned long) \
+							(x)->config_ctl_reg)
 
 static DEFINE_SPINLOCK(pll_reg_lock);
 
@@ -464,7 +461,22 @@ static void __init __set_fsm_mode(void __iomem *mode_reg,
 	writel_relaxed(regval, mode_reg);
 }
 
-void __init __configure_pll(struct pll_config *config,
+static void __configure_alt_config(struct pll_alt_config config,
+		struct pll_config_regs *regs)
+{
+	u32 regval;
+
+	regval = readl_relaxed(PLL_CFG_ALT_REG(regs));
+
+	if (config.mask) {
+		regval &= ~config.mask;
+		regval |= config.val;
+	}
+
+	writel_relaxed(regval, PLL_CFG_ALT_REG(regs));
+}
+
+void __configure_pll(struct pll_config *config,
 		struct pll_config_regs *regs, u32 ena_fsm_mode)
 {
 	u32 regval;
@@ -497,6 +509,12 @@ void __init __configure_pll(struct pll_config *config,
 	regval &= ~config->vco_mask;
 	regval |= config->vco_val;
 	writel_relaxed(regval, PLL_CONFIG_REG(regs));
+
+	if (regs->config_alt_reg)
+		__configure_alt_config(config->alt_cfg, regs);
+
+	if (regs->config_ctl_reg)
+		writel_relaxed(config->cfg_ctl_val, PLL_CFG_CTL_REG(regs));
 }
 
 void __init configure_sr_pll(struct pll_config *config,
