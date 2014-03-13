@@ -226,9 +226,6 @@ module_param_named(debug_mask, msm_smd_debug_mask,
 
 static unsigned last_heap_free = 0xffffffff;
 
-static inline void smd_write_intr(unsigned int val,
-				const void __iomem *addr);
-
 #if defined(CONFIG_ARCH_MSM7X30)
 #define MSM_TRIG_A2M_SMD_INT     \
 			(smd_write_intr(1 << 0, MSM_APCS_GCC_BASE + 0x8))
@@ -372,8 +369,7 @@ static RAW_NOTIFIER_HEAD(smd_module_init_notifier_list);
 static DEFINE_MUTEX(smd_module_init_notifier_lock);
 static void smd_module_init_notify(uint32_t state, void *data);
 
-static inline void smd_write_intr(unsigned int val,
-				const void __iomem *addr)
+static inline void smd_write_intr(unsigned int val, void __iomem *addr)
 {
 	wmb();
 	__raw_writel(val, addr);
