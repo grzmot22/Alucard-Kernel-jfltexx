@@ -56,6 +56,7 @@ static struct msm_bus_scale_pdata bus_bw = {
 	.active_only = 1,
 };
 static u32 bus_client;
+static bool hotplug_ready;
 
 struct cpufreq_work_struct {
 	struct work_struct work;
@@ -463,8 +464,8 @@ static int __cpuinit msm_cpufreq_cpu_callback(struct notifier_block *nfb,
 	unsigned int cpu = (unsigned long)hcpu;
 	int rc;
 
-	/* Fail hotplug until cpufreq is ready to handle it */
-	if (!cpu_clk[0])
+	/* Fail hotplug until this driver can get CPU clocks */
+	if (!hotplug_ready)
 		return NOTIFY_BAD;
 
 	switch (action & ~CPU_TASKS_FROZEN) {
@@ -778,6 +779,7 @@ static int __init msm_cpufreq_probe(struct platform_device *pdev)
 
 	if (!cpu_clk[0])
 		return -ENODEV;
+	hotplug_ready = true;
 
 	ret = cpufreq_parse_dt(dev);
 	if (ret)
