@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2007 Google, Inc.
- * Copyright (c) 2007-2012, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2007-2014, The Linux Foundation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -414,23 +414,23 @@ static int clock_debug_print_clock(struct clk_lookup *cl)
 	if (!c || !c->prepare_count)
 		return 0;
 
-	pr_info("\t");
-	do {
-		if (c->vdd_class)
-			pr_cont("%s%s%s%s:%u:%u [%ld, %lu]", start,
-					c->dbg_name,
-					dev ? ":" : "",
-					dev ? cl->dev_id : "",
-					c->prepare_count, c->count, c->rate,
-					c->vdd_class->cur_level);
-		else
-			pr_cont("%s%s%s%s:%u:%u [%ld]", start, c->dbg_name,
-					dev ? ":" : "",
-					dev ? cl->dev_id : "",
-					c->prepare_count, c->count, c->rate);
-		start = " -> ";
-		dev = 0;
-	} while ((c = clk_get_parent(c)));
+	if (IS_ERR_OR_NULL(measure)) {
+		for (i = 0; i < size; i++) {
+			if (table[i].clk->flags & CLKFLAG_MEASURE) {
+				measure = table[i].clk;
+				break;
+			}
+		}
+
+		if (!IS_ERR_OR_NULL(measure)) {
+			mutex_lock(&clk_list_lock);
+			list_for_each_entry(clk_table_tmp, &clk_list, node) {
+			for (i = 0; i < clk_table_tmp->num_clocks; i++)
+				clock_measure_add(clk_table_tmp->clocks[i].clk);
+			}
+			mutex_unlock(&clk_list_lock);
+		}
+	}
 
 	pr_cont("\n");
 
