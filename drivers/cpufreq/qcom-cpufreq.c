@@ -17,7 +17,6 @@
  *
  */
 
-#include <linux/earlysuspend.h>
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/cpufreq.h>
@@ -29,32 +28,18 @@
 #include <linux/clk.h>
 #include <linux/err.h>
 #include <linux/platform_device.h>
+#include <linux/of.h>
 #include <mach/socinfo.h>
-#include <mach/msm_bus.h>
 
 #include "../../arch/arm/mach-msm/acpuclock.h"
-
-#ifdef CONFIG_DEBUG_FS
-#include <linux/debugfs.h>
-#include <linux/seq_file.h>
-#include <asm/div64.h>
-#endif
 
 static DEFINE_MUTEX(l2bw_lock);
 
 static struct clk *cpu_clk[NR_CPUS];
 static struct clk *l2_clk;
-static unsigned int freq_index[NR_CPUS];
 static struct cpufreq_frequency_table *freq_table;
-static unsigned int *l2_khz;
 static bool is_clk;
 static bool is_sync;
-static struct msm_bus_vectors *bus_vec_lst;
-static struct msm_bus_scale_pdata bus_bw = {
-	.name = "msm-cpufreq",
-	.active_only = 1,
-};
-static u32 bus_client;
 
 struct cpufreq_work_struct {
 	struct work_struct work;
@@ -191,36 +176,6 @@ void set_max_lock(int freq)
 EXPORT_SYMBOL(set_max_lock);
 #endif
 
-static void update_l2_bw(int *also_cpu)
-{
-	int rc = 0, cpu;
-	unsigned int index = 0;
-
-	mutex_lock(&l2bw_lock);
-
-	if (also_cpu)
-		index = freq_index[*also_cpu];
-
-	for_each_online_cpu(cpu) {
-		index = max(index, freq_index[cpu]);
-	}
-
-	if (l2_clk)
-		rc = clk_set_rate(l2_clk, l2_khz[index] * 1000);
-	if (rc) {
-		pr_err("Error setting L2 clock rate!\n");
-		goto out;
-	}
-
-	if (bus_client)
-		rc = msm_bus_scale_client_update_request(bus_client, index);
-	if (rc)
-		pr_err("Bandwidth req failed (%d)\n", rc);
-
-out:
-	mutex_unlock(&l2bw_lock);
-}
-
 static int set_cpu_freq(struct cpufreq_policy *policy, unsigned int new_freq,
 			unsigned int index)
 {
@@ -260,10 +215,6 @@ static int set_cpu_freq(struct cpufreq_policy *policy, unsigned int new_freq,
 		unsigned long rate = new_freq * 1000;
 		rate = clk_round_rate(cpu_clk[policy->cpu], rate);
 		ret = clk_set_rate(cpu_clk[policy->cpu], rate);
-		if (!ret) {
-			freq_index[policy->cpu] = index;
-			update_l2_bw(NULL);
-		}
 	} else {
 		ret = acpuclk_set_rate(policy->cpu, new_freq, SETRATE_CPUFREQ);
 	}
@@ -457,14 +408,12 @@ static int __cpuinit msm_cpufreq_cpu_callback(struct notifier_block *nfb,
 		if (is_clk) {
 			clk_unprepare(cpu_clk[cpu]);
 			clk_unprepare(l2_clk);
-			update_l2_bw(NULL);
 		}
 		break;
 	case CPU_UP_CANCELED:
 		if (is_clk) {
 			clk_unprepare(cpu_clk[cpu]);
 			clk_unprepare(l2_clk);
-			update_l2_bw(NULL);
 		}
 		break;
 	case CPU_UP_PREPARE:
@@ -477,7 +426,6 @@ static int __cpuinit msm_cpufreq_cpu_callback(struct notifier_block *nfb,
 				clk_unprepare(l2_clk);
 				return NOTIFY_BAD;
 			}
-			update_l2_bw(&cpu);
 		}
 		break;
 
@@ -593,47 +541,24 @@ static struct cpufreq_driver msm_cpufreq_driver = {
 };
 
 #define PROP_TBL "qcom,cpufreq-table"
-#define PROP_PORTS "qcom,cpu-mem-ports"
 static int cpufreq_parse_dt(struct device *dev)
 {
-	int ret, len, nf, num_cols = 1, num_paths = 0, i, j, k;
-	u32 *data, *ports = NULL;
-	struct msm_bus_vectors *v = NULL;
+	int ret, nf, i;
+	u32 *data;
 
-	if (l2_clk)
-		num_cols++;
-
-	/* Parse optional bus ports parameter */
-	if (of_find_property(dev->of_node, PROP_PORTS, &len)) {
-		len /= sizeof(*ports);
-		if (len % 2)
-			return -EINVAL;
-
-		ports = devm_kzalloc(dev, len * sizeof(*ports), GFP_KERNEL);
-		if (!ports)
-			return -ENOMEM;
-		ret = of_property_read_u32_array(dev->of_node, PROP_PORTS,
-						 ports, len);
-		if (ret)
-			return ret;
-		num_paths = len / 2;
-		num_cols++;
-	}
-
-	/* Parse CPU freq -> L2/Mem BW map table. */
-	if (!of_find_property(dev->of_node, PROP_TBL, &len))
+	/* Parse list of usable CPU frequencies. */
+	if (!of_find_property(dev->of_node, PROP_TBL, &nf))
 		return -EINVAL;
-	len /= sizeof(*data);
+	nf /= sizeof(*data);
 
-	if (len % num_cols || len == 0)
+	if (nf == 0)
 		return -EINVAL;
-	nf = len / num_cols;
 
-	data = devm_kzalloc(dev, len * sizeof(*data), GFP_KERNEL);
+	data = devm_kzalloc(dev, nf * sizeof(*data), GFP_KERNEL);
 	if (!data)
 		return -ENOMEM;
 
-	ret = of_property_read_u32_array(dev->of_node, PROP_TBL, data, len);
+	ret = of_property_read_u32_array(dev->of_node, PROP_TBL, data, nf);
 	if (ret)
 		return ret;
 
@@ -643,26 +568,10 @@ static int cpufreq_parse_dt(struct device *dev)
 	if (!freq_table)
 		return -ENOMEM;
 
-	if (l2_clk) {
-		l2_khz = devm_kzalloc(dev, nf * sizeof(*l2_khz), GFP_KERNEL);
-		if (!l2_khz)
-			return -ENOMEM;
-	}
-
-	if (num_paths) {
-		int sz_u = nf * sizeof(*bus_bw.usecase);
-		int sz_v = nf * num_paths * sizeof(*bus_vec_lst);
-		bus_bw.usecase = devm_kzalloc(dev, sz_u, GFP_KERNEL);
-		v = bus_vec_lst = devm_kzalloc(dev, sz_v, GFP_KERNEL);
-		if (!bus_bw.usecase || !bus_vec_lst)
-			return -ENOMEM;
-	}
-
-	j = 0;
 	for (i = 0; i < nf; i++) {
 		unsigned long f;
 
-		f = clk_round_rate(cpu_clk[0], data[j++] * 1000);
+		f = clk_round_rate(cpu_clk[0], data[i] * 1000);
 		if (IS_ERR_VALUE(f))
 			break;
 		f /= 1000;
@@ -687,85 +596,15 @@ static int cpufreq_parse_dt(struct device *dev)
 
 		freq_table[i].driver_data = i;
 		freq_table[i].frequency = f;
-
-		if (l2_clk) {
-			f = clk_round_rate(l2_clk, data[j++] * 1000);
-			if (IS_ERR_VALUE(f)) {
-				pr_err("Error finding L2 rate for CPU %d KHz\n",
-					freq_table[i].frequency);
-				freq_table[i].frequency = CPUFREQ_ENTRY_INVALID;
-			} else {
-				f /= 1000;
-				l2_khz[i] = f;
-			}
-		}
-
-		if (num_paths) {
-			unsigned int bw_mbps = data[j++];
-			bus_bw.usecase[i].num_paths = num_paths;
-			bus_bw.usecase[i].vectors = v;
-			for (k = 0; k < num_paths; k++) {
-				v->src = ports[k * 2];
-				v->dst = ports[k * 2 + 1];
-				v->ib = bw_mbps * 1000000ULL;
-				v++;
-			}
-		}
 	}
 
-	bus_bw.num_usecases = i;
 	freq_table[i].driver_data = i;
 	freq_table[i].frequency = CPUFREQ_TABLE_END;
 
-	if (ports)
-		devm_kfree(dev, ports);
 	devm_kfree(dev, data);
 
 	return 0;
 }
-
-#ifdef CONFIG_DEBUG_FS
-static int msm_cpufreq_show(struct seq_file *m, void *unused)
-{
-	unsigned int i, cpu_freq;
-	uint64_t ib;
-
-	if (!freq_table)
-		return 0;
-
-	seq_printf(m, "%10s%10s", "CPU (KHz)", "L2 (KHz)");
-	if (bus_bw.usecase)
-		seq_printf(m, "%12s", "Mem (MBps)");
-	seq_printf(m, "\n");
-
-	for (i = 0; freq_table[i].frequency != CPUFREQ_TABLE_END; i++) {
-		cpu_freq = freq_table[i].frequency;
-		if (cpu_freq == CPUFREQ_ENTRY_INVALID)
-			continue;
-		seq_printf(m, "%10d", cpu_freq);
-		seq_printf(m, "%10d", l2_khz ? l2_khz[i] : cpu_freq);
-		if (bus_bw.usecase) {
-			ib = bus_bw.usecase[i].vectors[0].ib;
-			do_div(ib, 1000000);
-			seq_printf(m, "%12llu", ib);
-		}
-		seq_printf(m, "\n");
-	}
-	return 0;
-}
-
-static int msm_cpufreq_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, msm_cpufreq_show, inode->i_private);
-}
-
-const struct file_operations msm_cpufreq_fops = {
-	.open		= msm_cpufreq_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= seq_release,
-};
-#endif
 
 static int __init msm_cpufreq_probe(struct platform_device *pdev)
 {
@@ -798,19 +637,7 @@ static int __init msm_cpufreq_probe(struct platform_device *pdev)
 		cpufreq_frequency_table_get_attr(freq_table, cpu);
 	}
 
-	if (bus_bw.usecase) {
-		bus_client = msm_bus_scale_register_client(&bus_bw);
-		if (!bus_client)
-			dev_warn(dev, "Unable to register bus client\n");
-	}
-
 	is_clk = true;
-
-#ifdef CONFIG_DEBUG_FS
-	if (!debugfs_create_file("msm_cpufreq", S_IRUGO, NULL, NULL,
-		&msm_cpufreq_fops))
-		return -ENOMEM;
-#endif
 
 	return 0;
 }
