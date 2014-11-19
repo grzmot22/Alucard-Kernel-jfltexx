@@ -1970,7 +1970,7 @@ static void dwc3_gadget_disconnect_interrupt(struct dwc3 *dwc)
 
 	dwc->gadget.speed = USB_SPEED_UNKNOWN;
 	dwc->setup_packet_pending = false;
-	dwc->link_state = dwc3_get_link_state(dwc);
+	dwc->link_state = DWC3_LINK_STATE_SS_DIS;
 }
 
 static void dwc3_gadget_usb3_phy_power(struct dwc3 *dwc, int on)
@@ -2060,7 +2060,7 @@ static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 	reg = dwc3_readl(dwc->regs, DWC3_DCFG);
 	reg &= ~(DWC3_DCFG_DEVADDR_MASK);
 	dwc3_writel(dwc->regs, DWC3_DCFG, reg);
-	dwc->link_state = dwc3_get_link_state(dwc);
+	dwc->link_state = DWC3_LINK_STATE_U0;
 }
 
 static void dwc3_update_ram_clk_sel(struct dwc3 *dwc, u32 speed)
@@ -2190,12 +2190,19 @@ static void dwc3_gadget_wakeup_interrupt(struct dwc3 *dwc)
 {
 	dev_vdbg(dwc->dev, "%s\n", __func__);
 
-	/*
-	 * TODO take core out of low power mode when that's
-	 * implemented.
-	 */
+	/* Only perform resume from L2 or Early suspend states */
+	if (dwc->link_state == DWC3_LINK_STATE_U3) {
+		dbg_event(0xFF, "WAKEUP", 0);
 
-	dwc->gadget_driver->resume(&dwc->gadget);
+		/*
+		 * gadget_driver resume function might require some dwc3-gadget
+		 * operations, such as ep_enable. Hence, dwc->lock must be
+		 * released.
+		 */
+		spin_unlock(&dwc->lock);
+		dwc->gadget_driver->resume(&dwc->gadget);
+		spin_lock(&dwc->lock);
+	}
 }
 
 static void dwc3_gadget_linksts_change_interrupt(struct dwc3 *dwc,
