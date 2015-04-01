@@ -430,7 +430,6 @@ obj-$(CONFIG_MSM_SMCMOD) += smcmod.o
 obj-$(CONFIG_MSM_CPU_PWRCTL) +=  msm_cpu_pwrctl.o
 
 obj-$(CONFIG_ARCH_RANDOM) += early_random.o
-obj-$(CONFIG_MMI_SOC_INFO) += mmi_soc_info.o
 
 ifdef CONFIG_SEC_THERMISTOR
 obj-$(CONFIG_SEC_THERMISTOR) += sec_thermistor.o fusion3-thermistor.o
