@@ -361,8 +361,6 @@ static void kgsl_page_alloc_free(struct kgsl_memdesc *memdesc)
 	struct scatterlist *sg;
 	int sglen = memdesc->sglen;
 
-	kgsl_driver.stats.page_alloc -= memdesc->size;
-
 	if (memdesc->hostptr) {
 		vunmap(memdesc->hostptr);
 		kgsl_driver.stats.vmalloc -= memdesc->size;
