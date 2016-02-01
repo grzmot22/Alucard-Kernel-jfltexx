@@ -100,7 +100,9 @@ static int ack_number;
 static int count_number;
 #endif
 static struct barcode_emul_platform_data *g_pdata;
+#if defined(CONFIG_MACH_MELIUS)
 static struct clk *main_clk;
+#endif
 static int Is_clk_enabled;
 static int Is_beaming;
 static struct mutex		en_mutex;
@@ -109,6 +111,7 @@ static int gpiox_state;
 static bool fw_dl_complete;
 static int 	enable_count;
 static int check_fpga_cdone(void);
+#if defined(CONFIG_MACH_MELIUS)
 static struct platform_device barcode_mclk_dev = {
 	.name = "barcode_mclk_dev_pdev",
 	.id = -1,
@@ -116,11 +119,11 @@ static struct platform_device barcode_mclk_dev = {
 		.init_name = "barcode_mclk_dev",
 	},
 };
+#endif
 
 #if defined(CONFIG_MACH_JF_DCM)
 static void fpga_enable(int enable, int bdelay)
 {
-	static int Is_clk_enabled;
 	if (enable) {
 		mutex_lock(&en_mutex);
 		if (!Is_clk_enabled) {
@@ -148,15 +151,16 @@ static void fpga_enable(int enable, int bdelay)
 #else
 static void fpga_enable(int enable)
 {
-	static int Is_clk_enabled;
 	if (enable) {
 		if (!Is_clk_enabled && (enable_count == 0)) {
 			mutex_lock(&en_mutex);
 			if (g_pdata->fw_type) {
 				if (g_pdata->clock_en)
 					g_pdata->clock_en(1);
+#if defined(CONFIG_MACH_MELIUS)
 			} else {
 				clk_prepare_enable(main_clk);
+#endif
 			}
 			gpio_set_value(g_pdata->rst_n, GPIO_LEVEL_HIGH);
 			usleep_range(1000, 2000);
@@ -170,8 +174,10 @@ static void fpga_enable(int enable)
 			if (g_pdata->fw_type) {
 				if (g_pdata->clock_en)
 					g_pdata->clock_en(0);
+#if defined(CONFIG_MACH_MELIUS)
 			} else {
 				clk_disable_unprepare(main_clk);
+#endif
 			}
 			Is_clk_enabled = 0;
 			mutex_unlock(&en_mutex);
@@ -287,6 +293,7 @@ static int barcode_fpga_fimrware_update_start(const u8 *data, int len)
 #endif
 	return 0;
 }
+#if defined(CONFIG_MACH_MELIUS)
 static int barcode_fpga_fimrware_update_start_melius(const u8 *data, int len)
 {
 	pr_barcode("%s\n", __func__);
@@ -312,6 +319,7 @@ static int barcode_fpga_fimrware_update_start_melius(const u8 *data, int len)
 	return 0;
 
 }
+#endif
 void ice4_fpga_firmware_update(void)
 {
 	if (g_pdata->fw_type == ICE_19M)
@@ -323,9 +331,11 @@ void ice4_fpga_firmware_update(void)
 	else if (g_pdata->fw_type == ICE_24M)
 		barcode_fpga_fimrware_update_start(spiword_24m,
 						sizeof(spiword_24m));
+#if defined(CONFIG_MACH_MELIUS)
 	else if (g_pdata->fw_type == ICE_IRDA)
 		barcode_fpga_fimrware_update_start_melius(spiword_irda,
 						sizeof(spiword_irda));
+#endif
 	else
 		barcode_fpga_fimrware_update_start(spiword,
 						sizeof(spiword));
@@ -832,9 +842,10 @@ static void ir_remocon_work(struct barcode_emul_data *ir_data, int count)
 #else
 	fpga_enable(0);
 #endif
-
+#ifndef CONFIG_MACH_MELIUS
 	if (g_pdata->ir_led_poweron)
 		g_pdata->ir_led_poweron(0);
+#endif
 }
 
 static ssize_t remocon_store(struct device *dev, struct device_attribute *attr,
@@ -853,6 +864,19 @@ static ssize_t remocon_store(struct device *dev, struct device_attribute *attr,
 
 			if (data->count == 2) {
 				data->ir_freq = _data;
+#if defined(CONFIG_MACH_MELIUS)
+				if (data->on_off) {
+					g_pdata->ir_wake_en(0);
+					usleep_range(200, 300);
+					g_pdata->ir_wake_en(1);
+					msleep(30);
+				} else {
+					g_pdata->ir_vdd_onoff(1);
+					g_pdata->ir_wake_en(1);
+					msleep(60);
+					data->on_off = 1;
+				}
+#endif
 				data->i2c_block_transfer.data[2]
 								= _data >> 16;
 				data->i2c_block_transfer.data[3]
@@ -1199,12 +1223,13 @@ static void fw_work(struct work_struct *work)
 			break;
 		}
 	}
-
+#if defined(CONFIG_MACH_MELIUS)
 	/* set clock */
 	if (!g_pdata->fw_type) {
 		main_clk = clk_get(&barcode_mclk_dev.dev, "osr_clk");
 		clk_set_rate(main_clk, 12288000);
 	}
+#endif
 	Is_clk_enabled = 0;
 
 	fpga_enable(1);
@@ -1304,6 +1329,7 @@ static int __devinit barcode_emul_probe(struct i2c_client *client,
 			&data->fw_dl, msecs_to_jiffies(20));
 
 	g_client = client;
+
 	Is_beaming = BEAMING_OFF;
 
 	pr_err("probe complete %s\n", __func__);
@@ -1320,6 +1346,9 @@ static int __devexit barcode_emul_remove(struct i2c_client *client)
 	struct barcode_emul_data *data = i2c_get_clientdata(client);
 
 	i2c_set_clientdata(client, NULL);
+#if defined(CONFIG_MACH_MELIUS)
+	clk_put(main_clk);
+#endif
 	kfree(data);
 	return 0;
 }
