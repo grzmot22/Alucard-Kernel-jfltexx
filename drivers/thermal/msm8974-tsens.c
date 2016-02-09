@@ -192,7 +192,8 @@ static int tsens_tz_degc_to_code(int degc, int sensor_num)
 
 static void msm_tsens_get_temp(int sensor_num, unsigned long *temp)
 {
-	unsigned int code, sensor_addr;
+	unsigned int code;
+	void __iomem *sensor_addr;
 
 	if (!tmdev->prev_reading_avail) {
 		while (!(readl_relaxed(TSENS_TRDY_ADDR(tmdev->tsens_addr))
@@ -202,8 +203,7 @@ static void msm_tsens_get_temp(int sensor_num, unsigned long *temp)
 		tmdev->prev_reading_avail = true;
 	}
 
-	sensor_addr =
-		(unsigned int)TSENS_S0_STATUS_ADDR(tmdev->tsens_addr);
+	sensor_addr = TSENS_S0_STATUS_ADDR(tmdev->tsens_addr);
 	code = readl_relaxed(sensor_addr +
 			(sensor_num << TSENS_STATUS_ADDR_OFFSET));
 	*temp = tsens_tz_code_to_degc((code & TSENS_SN_STATUS_TEMP_MASK),
@@ -431,12 +431,13 @@ static irqreturn_t tsens_isr(int irq, void *data)
 {
 	struct tsens_tm_device *tm = data;
 	unsigned int i, status, threshold;
-	unsigned int sensor_status_addr, sensor_status_ctrl_addr;
+	void __iomem *sensor_status_addr;
+	void __iomem *sensor_status_ctrl_addr;
 
 	sensor_status_addr =
-		(unsigned int)TSENS_S0_STATUS_ADDR(tmdev->tsens_addr);
+		TSENS_S0_STATUS_ADDR(tmdev->tsens_addr);
 	sensor_status_ctrl_addr =
-		(unsigned int)TSENS_S0_UPPER_LOWER_STATUS_CTRL_ADDR
+		TSENS_S0_UPPER_LOWER_STATUS_CTRL_ADDR
 		(tmdev->tsens_addr);
 	for (i = 0; i < tmdev->tsens_num_sensor; i++) {
 		bool upper_thr = false, lower_thr = false;

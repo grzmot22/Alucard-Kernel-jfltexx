@@ -201,7 +201,8 @@ static int tsens_tz_degC_to_code(int degC, int sensor_num)
 
 static void tsens8960_get_temp(int sensor_num, unsigned long *temp)
 {
-	unsigned int code, offset = 0, sensor_addr;
+	unsigned int code, offset = 0;
+	void __iomem *sensor_addr;
 
 	if (!tmdev->prev_reading_avail) {
 		while (!(readl_relaxed(TSENS_INT_STATUS_ADDR)
@@ -211,7 +212,7 @@ static void tsens8960_get_temp(int sensor_num, unsigned long *temp)
 		tmdev->prev_reading_avail = true;
 	}
 
-	sensor_addr = (unsigned int)TSENS_S0_STATUS_ADDR;
+	sensor_addr = TSENS_S0_STATUS_ADDR;
 	if (tmdev->hw_type == APQ_8064 &&
 			sensor_num >= TSENS_8064_SEQ_SENSORS)
 		offset = TSENS_8064_S4_S5_OFFSET;
@@ -642,7 +643,7 @@ static void tsens_scheduler_fn(struct work_struct *work)
 	struct tsens_tm_device *tm = container_of(work, struct tsens_tm_device,
 					tsens_work);
 	unsigned int threshold, threshold_low, i, code, reg, sensor, mask;
-	unsigned int sensor_addr;
+	void __iomem *sensor_addr;
 	bool upper_th_x, lower_th_x;
 	int adc_code;
 
@@ -671,7 +672,7 @@ static void tsens_scheduler_fn(struct work_struct *work)
 		sensor &= (uint32_t) SENSORS_EN;
 	}
 	sensor >>= TSENS_SENSOR0_SHIFT;
-	sensor_addr = (unsigned int)TSENS_S0_STATUS_ADDR;
+	sensor_addr = TSENS_S0_STATUS_ADDR;
 	for (i = 0; i < tmdev->tsens_num_sensor; i++) {
 		if (i == TSENS_8064_SEQ_SENSORS)
 			sensor_addr += TSENS_8064_S4_S5_OFFSET;
