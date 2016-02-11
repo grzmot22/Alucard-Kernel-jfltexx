@@ -296,8 +296,8 @@ int virt_to_scatterlist(const void *addr, int size, struct scatterlist *sg,
 	int offset;
 	int remainder_of_page;
 
-    if (sg)
-    	sg_init_table(sg, sg_size);
+	if (sg)
+	sg_init_table(sg, sg_size);
 
 	while (size > 0 && i < sg_size) {
 		pg = virt_to_page(addr);
@@ -367,6 +367,9 @@ static int encrypt_scatterlist(struct ecryptfs_crypt_stat *crypt_stat,
 	ecryptfs_printk(KERN_DEBUG, "Encrypting [%d] bytes.\n", size);
 	crypto_blkcipher_encrypt_iv(&desc, dest_sg, src_sg, size);
 	mutex_unlock(&crypt_stat->cs_tfm_mutex);
+	ecryptfs_printk(KERN_DEBUG, "Encrypting [%d] bytes.\n", size);
+	ablkcipher_request_set_crypt(req, src_sg, dest_sg, size, iv);
+	rc = crypto_ablkcipher_encrypt(req);
 out:
 	return rc;
 }
@@ -493,6 +496,13 @@ int ecryptfs_encrypt_page(struct page *page)
 					"\n", rc);
 			goto out;
 		}
+		extent_crypt_req->inode = ecryptfs_inode;
+		extent_crypt_req->enc_extent_page = enc_extent_page;
+		extent_crypt_req->extent_offset = extent_offset;
+
+		/* Error handling is done in the completion routine. */
+		ecryptfs_encrypt_extent(extent_crypt_req,
+					ecryptfs_encrypt_extent_done);
 	}
 	rc = 0;
 out:
@@ -738,30 +748,28 @@ int ecryptfs_init_crypt_ctx(struct ecryptfs_crypt_stat *crypt_stat)
 			"key_size_bits = [%zd]\n",
 			crypt_stat->cipher, (int)strlen(crypt_stat->cipher),
 			crypt_stat->key_size << 3);
-	mutex_lock(&crypt_stat->cs_tfm_mutex);
 	if (crypt_stat->tfm) {
 		rc = 0;
-		goto out_unlock;
+		goto out;
 	}
+	mutex_lock(&crypt_stat->cs_tfm_mutex);
 	rc = ecryptfs_crypto_api_algify_cipher_name(&full_alg_name,
 						    crypt_stat->cipher, "cbc");
 	if (rc)
 		goto out_unlock;
 	crypt_stat->tfm = crypto_alloc_blkcipher(full_alg_name, 0,
 						 CRYPTO_ALG_ASYNC);
-
+	kfree(full_alg_name);
 	if (IS_ERR(crypt_stat->tfm)) {
 		rc = PTR_ERR(crypt_stat->tfm);
 		crypt_stat->tfm = NULL;
 		ecryptfs_printk(KERN_ERR, "cryptfs: init_crypt_ctx(): "
 				"Error initializing cipher [%s]\n",
-				full_alg_name);
-		goto out_free;
+				crypt_stat->cipher);
+		goto out_unlock;
 	}
 	crypto_blkcipher_set_flags(crypt_stat->tfm, CRYPTO_TFM_REQ_WEAK_KEY);
 	rc = 0;
-out_free:
-	kfree(full_alg_name);
 out_unlock:
 	mutex_unlock(&crypt_stat->cs_tfm_mutex);
 out:
@@ -956,6 +964,13 @@ int ecryptfs_new_file_context(struct inode *ecryptfs_inode)
 
 	ecryptfs_set_default_crypt_stat_vals(crypt_stat, mount_crypt_stat);
 	crypt_stat->flags |= (ECRYPTFS_ENCRYPTED | ECRYPTFS_KEY_VALID);
+#if 1 // FEATURE_SDCARD_ENCRYPTION  DEBUG
+	if (mount_crypt_stat && (mount_crypt_stat->flags & ECRYPTFS_DECRYPTION_ONLY))
+	{
+		printk(KERN_ERR "%s:%d::CHECK decryption_only set, try encryption disable\n", __FUNCTION__,__LINE__);
+	//	crypt_stat->flags &= ~(ECRYPTFS_ENCRYPTED);
+	}
+#endif
 	ecryptfs_copy_mount_wide_flags_to_inode_flags(crypt_stat,
 						      mount_crypt_stat);
 	rc = ecryptfs_copy_mount_wide_sigs_to_inode_sigs(crypt_stat,
@@ -1314,12 +1329,23 @@ int ecryptfs_write_metadata(struct dentry *ecryptfs_dentry,
 {
 	struct ecryptfs_crypt_stat *crypt_stat =
 		&ecryptfs_inode_to_private(ecryptfs_inode)->crypt_stat;
+#if 1 // FEATURE_SDCARD_ENCRYPTION DEBUG
+	struct ecryptfs_mount_crypt_stat *mount_crypt_stat =
+                &ecryptfs_superblock_to_private(
+                        ecryptfs_dentry->d_sb)->mount_crypt_stat;
+#endif
 	unsigned int order;
 	char *virt;
 	size_t virt_len;
 	size_t size = 0;
 	int rc = 0;
 
+#if 1 // FEATURE_SDCARD_ENCRYPTION DEBUG
+if (mount_crypt_stat && (mount_crypt_stat->flags
+                        & ECRYPTFS_DECRYPTION_ONLY)) {
+ecryptfs_printk(KERN_ERR, "%s:%d:: Error decryption_only set \n", __FUNCTION__, __LINE__);
+}
+#endif
 	if (likely(crypt_stat->flags & ECRYPTFS_ENCRYPTED)) {
 		if (!(crypt_stat->flags & ECRYPTFS_KEY_VALID)) {
 			printk(KERN_ERR "Key is invalid; bailing out\n");
@@ -1724,7 +1750,7 @@ ecryptfs_process_key_cipher(struct crypto_blkcipher **key_tfm,
 {
 	char dummy_key[ECRYPTFS_MAX_KEY_BYTES];
 	char *full_alg_name = NULL;
-	int rc;
+	int rc = 0;
 
 	*key_tfm = NULL;
 	if (*key_size > ECRYPTFS_MAX_KEY_BYTES) {
