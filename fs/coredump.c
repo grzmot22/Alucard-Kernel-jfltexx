@@ -651,7 +651,7 @@ void do_coredump(siginfo_t *siginfo, struct pt_regs *regs)
 		if (IS_ERR(cprm.file))
 			goto fail_unlock;
 
-		inode = cprm.file->f_path.dentry->d_inode;
+		inode = file_inode(cprm.file);
 		if (inode->i_nlink > 1)
 			goto close_fail;
 		if (d_unhashed(cprm.file->f_path.dentry))

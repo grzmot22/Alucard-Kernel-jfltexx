@@ -420,7 +420,7 @@ static void fuse_sync_writes(struct inode *inode)
 
 static int fuse_flush(struct file *file, fl_owner_t id)
 {
-	struct inode *inode = file->f_path.dentry->d_inode;
+	struct inode *inode = file_inode(file);
 	struct fuse_conn *fc = get_fuse_conn(inode);
 	struct fuse_file *ff = file->private_data;
 	struct fuse_req *req;
@@ -1923,7 +1923,7 @@ static void fuse_lk_fill(struct fuse_req *req, struct file *file,
 			 const struct file_lock *fl, int opcode, pid_t pid,
 			 int flock)
 {
-	struct inode *inode = file->f_path.dentry->d_inode;
+	struct inode *inode = file_inode(file);
 	struct fuse_conn *fc = get_fuse_conn(inode);
 	struct fuse_file *ff = file->private_data;
 	struct fuse_lk_in *arg = &req->misc.lk_in;
@@ -1945,7 +1945,7 @@ static void fuse_lk_fill(struct fuse_req *req, struct file *file,
 
 static int fuse_getlk(struct file *file, struct file_lock *fl)
 {
-	struct inode *inode = file->f_path.dentry->d_inode;
+	struct inode *inode = file_inode(file);
 	struct fuse_conn *fc = get_fuse_conn(inode);
 	struct fuse_req *req;
 	struct fuse_lk_out outarg;
@@ -1970,7 +1970,7 @@ static int fuse_getlk(struct file *file, struct file_lock *fl)
 
 static int fuse_setlk(struct file *file, struct file_lock *fl, int flock)
 {
-	struct inode *inode = file->f_path.dentry->d_inode;
+	struct inode *inode = file_inode(file);
 	struct fuse_conn *fc = get_fuse_conn(inode);
 	struct fuse_req *req;
 	int opcode = (fl->fl_flags & FL_SLEEP) ? FUSE_SETLKW : FUSE_SETLK;
@@ -2002,7 +2002,7 @@ static int fuse_setlk(struct file *file, struct file_lock *fl, int flock)
 
 static int fuse_file_lock(struct file *file, int cmd, struct file_lock *fl)
 {
-	struct inode *inode = file->f_path.dentry->d_inode;
+	struct inode *inode = file_inode(file);
 	struct fuse_conn *fc = get_fuse_conn(inode);
 	int err;
 
@@ -2025,7 +2025,7 @@ static int fuse_file_lock(struct file *file, int cmd, struct file_lock *fl)
 
 static int fuse_file_flock(struct file *file, int cmd, struct file_lock *fl)
 {
-	struct inode *inode = file->f_path.dentry->d_inode;
+	struct inode *inode = file_inode(file);
 	struct fuse_conn *fc = get_fuse_conn(inode);
 	int err;
 
@@ -2082,7 +2082,7 @@ static sector_t fuse_bmap(struct address_space *mapping, sector_t block)
 static loff_t fuse_file_llseek(struct file *file, loff_t offset, int whence)
 {
 	loff_t retval;
-	struct inode *inode = file->f_path.dentry->d_inode;
+	struct inode *inode = file_inode(file);
 
 	/* No i_mutex protection necessary for SEEK_CUR and SEEK_SET */
 	if (whence == SEEK_CUR || whence == SEEK_SET)
@@ -2459,7 +2459,7 @@ EXPORT_SYMBOL_GPL(fuse_do_ioctl);
 long fuse_ioctl_common(struct file *file, unsigned int cmd,
 		       unsigned long arg, unsigned int flags)
 {
-	struct inode *inode = file->f_dentry->d_inode;
+	struct inode *inode = file_inode(file);
 	struct fuse_conn *fc = get_fuse_conn(inode);
 
 	if (!fuse_allow_current_process(fc))

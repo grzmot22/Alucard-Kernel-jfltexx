@@ -472,7 +472,6 @@ __writeback_single_inode(struct inode *inode, struct writeback_control *wbc)
 	 * due to delalloc, clear dirty metadata flags right before
 	 * write_inode()
 	 */
-
 	spin_lock(&inode->i_lock);
 
 	dirty = inode->i_state & I_DIRTY;
