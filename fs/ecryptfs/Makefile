@@ -2,10 +2,6 @@
 # Makefile for the Linux eCryptfs
 #
 
-ifeq ($(CONFIG_ECRYPT_FS_VIRTUAL_FAT_XATTR),y)
-EXTRA_CFLAGS += -DECRYPT_FS_VIRTUAL_FAT_XATTR
-endif
-
 obj-$(CONFIG_ECRYPT_FS) += ecryptfs.o
 
 ecryptfs-y := dentry.o file.o inode.o main.o super.o mmap.o read_write.o \
