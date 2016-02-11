@@ -1620,7 +1620,8 @@ static void audit_log_exit(struct audit_context *context, struct task_struct *ts
 	context->personality = tsk->personality;
 
 	if (context->major != 294) /* __NR_setsockopt */
-    {	
+	{
+
 	ab = audit_log_start(context, GFP_KERNEL, AUDIT_SYSCALL);
 	if (!ab)
 		return;		/* audit_panic has been called */
@@ -1644,7 +1645,9 @@ static void audit_log_exit(struct audit_context *context, struct task_struct *ts
 	audit_log_task_info(ab, tsk);
 	audit_log_key(ab, context->filterkey);
 	audit_log_end(ab);
-    }
+
+	}
+
 	for (aux = context->aux; aux; aux = aux->next) {
 
 		ab = audit_log_start(context, GFP_KERNEL, aux->type);
