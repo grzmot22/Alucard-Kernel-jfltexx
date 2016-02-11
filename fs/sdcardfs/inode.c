@@ -49,12 +49,12 @@ void revert_fsids(const struct cred * old_cred)
 }
 
 static int sdcardfs_create(struct inode *dir, struct dentry *dentry,
-			 umode_t mode, struct nameidata *nd)
+			 umode_t mode, bool want_excl)
 {
 	int err = 0;
 	struct dentry *lower_dentry;
 	struct dentry *lower_parent_dentry = NULL;
-	struct path lower_path, saved_path;
+	struct path lower_path;/*, saved_path;*/
 	struct sdcardfs_sb_info *sbi = SDCARDFS_SB(dentry->d_sb);
 	const struct cred *saved_cred = NULL;
 
@@ -77,18 +77,18 @@ static int sdcardfs_create(struct inode *dir, struct dentry *dentry,
 	err = mnt_want_write(lower_path.mnt);
 	if (err)
 		goto out_unlock;
-
+/*
 	pathcpy(&saved_path, &nd->path);
 	pathcpy(&nd->path, &lower_path);
-
+*/
 	/* set last 16bytes of mode field to 0664 */
 	mode = (mode & S_IFMT) | 00664; 
-	err = vfs_create(lower_parent_dentry->d_inode, lower_dentry, mode, nd);
-
+	err = vfs_create(lower_parent_dentry->d_inode, lower_dentry, mode, want_excl);
+/*
 	pathcpy(&nd->path, &saved_path);
 	if (err)
 		goto out;
-
+*/
 	err = sdcardfs_interpose(dentry, dir->i_sb, &lower_path);
 	if (err)
 		goto out;
