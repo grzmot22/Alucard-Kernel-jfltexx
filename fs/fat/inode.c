@@ -243,74 +243,6 @@ static const struct address_space_operations fat_aops = {
 	.bmap		= _fat_bmap
 };
 
-#if defined(CONFIG_VMWARE_MVP)
-int _fat_fallocate(struct inode *inode, loff_t len)
-{
-	struct super_block *sb = inode->i_sb;
-	struct msdos_sb_info *sbi = MSDOS_SB(sb);
-	int err;
-	sector_t nblocks, iblock;
-	unsigned short offset;
-
-	if (!S_ISREG(inode->i_mode)) {
-		printk(KERN_ERR "_fat_fallocate: supported only for regular files\n");
-		return -EOPNOTSUPP;
-	}
-
-	if (IS_IMMUTABLE(inode)) {
-		return -EPERM;
-	}
-
-	mutex_lock(&inode->i_mutex);
-
-	/* file is already big enough */
-	if (len <= i_size_read(inode)) {
-		mutex_unlock(&inode->i_mutex);
-		return 0;
-	}
-
-	nblocks = (len + sb->s_blocksize - 1) >> sb->s_blocksize_bits;
-	iblock = (MSDOS_I(inode)->mmu_private + sb->s_blocksize - 1) >> sb->s_blocksize_bits;
-
-	/* validate new size */
-	err = inode_newsize_ok(inode, len);
-	if (err) {
-		mutex_unlock(&inode->i_mutex);
-		return err;
-	}
-
-	/* check for available blocks on last cluster */
-	offset = (unsigned long)iblock & (sbi->sec_per_clus - 1);
-	if (offset) {
-		iblock += min((unsigned long) (sbi->sec_per_clus - offset),
-				(unsigned long) (nblocks - iblock));
-	}
-
-	/* now allocate new clusters */
-	while (iblock < nblocks) {
-		err = fat_add_cluster(inode);
-		if (err) {
-			break;
-		}
-
-		iblock += min((unsigned long) sbi->sec_per_clus,
-				(unsigned long) (nblocks - iblock));
-	}
-
-	/* update inode informations */
-	len = min(len, (loff_t)(iblock << sb->s_blocksize_bits));
-	i_size_write(inode, len);
-	MSDOS_I(inode)->mmu_private = len;
-	inode->i_mtime = inode->i_ctime = CURRENT_TIME_SEC;
-	mark_inode_dirty(inode);
-
-	mutex_unlock(&inode->i_mutex);
-
-	return err;
-}
-#endif
-/*                                                                                       */
-
 /*
  * New FAT inode stuff. We do the following:
  *	a) i_ino is constant and has nothing with on-disk location.
@@ -561,6 +493,7 @@ static void fat_evict_inode(struct inode *inode)
 	truncate_inode_pages(&inode->i_data, 0);
 	if (!inode->i_nlink) {
 		inode->i_size = 0;
+		fat_truncate_blocks(inode, 0);
 	}
 	invalidate_inode_buffers(inode);
 	clear_inode(inode);
@@ -610,7 +543,7 @@ static void fat_set_state(struct super_block *sb,
 			b->fat16.state &= ~FAT_STATE_DIRTY;
 	}
 
-	mark_buffer_dirty(bh);
+	mark_buffer_dirty_sync(bh);
 	sync_dirty_buffer(bh);
 	brelse(bh);
 }
@@ -619,9 +552,10 @@ static void fat_put_super(struct super_block *sb)
 {
 	struct msdos_sb_info *sbi = MSDOS_SB(sb);
 
-	fat_set_state(sb, 0, 0);
-
+	fat_msg(sb, KERN_INFO, "trying to unmount...");
 	ST_LOG("<%s> trying to umount... %d:%d",__func__,MAJOR(sb->s_dev),MINOR(sb->s_dev));
+
+	fat_set_state(sb, 0, 0);
 
 	iput(sbi->fsinfo_inode);
 	iput(sbi->fat_inode);
@@ -635,6 +569,7 @@ static void fat_put_super(struct super_block *sb)
 	sb->s_fs_info = NULL;
 	kfree(sbi);
 
+	fat_msg(sb, KERN_INFO, "unmounted successfully!");
 	ST_LOG("<%s> unmounted successfully! %d:%d",__func__,MAJOR(sb->s_dev),MINOR(sb->s_dev));
 }
 
@@ -702,8 +637,6 @@ static int fat_remount(struct super_block *sb, int *flags, char *data)
 	int new_rdonly;
 	struct msdos_sb_info *sbi = MSDOS_SB(sb);
 	*flags |= MS_NODIRATIME | (sbi->options.isvfat ? 0 : MS_NOATIME);
-
-	sync_filesystem(sb);
 
 	/* make sure we update state on remount. */
 	new_rdonly = *flags & MS_RDONLY;
@@ -791,7 +724,7 @@ retry:
 				  &raw_entry->adate, NULL);
 	}
 	spin_unlock(&sbi->inode_hash_lock);
-	mark_buffer_dirty(bh);
+	mark_buffer_dirty_sync(bh);
 	err = 0;
 	if (wait)
 		err = sync_dirty_buffer(bh);
@@ -1328,6 +1261,7 @@ int fat_fill_super(struct super_block *sb, void *data, int silent, int isvfat,
 	long error;
 	char buf[50];
 
+	fat_msg(sb, KERN_INFO, "trying to mount...");
 	ST_LOG("<%s> trying to mount... %d:%d",__func__,MAJOR(sb->s_dev),MINOR(sb->s_dev));
 	/*
 	 * GFP_KERNEL is ok here, because while we do hold the
@@ -1337,6 +1271,7 @@ int fat_fill_super(struct super_block *sb, void *data, int silent, int isvfat,
 	 */
 	sbi = kzalloc(sizeof(struct msdos_sb_info), GFP_KERNEL);
 	if (!sbi) {
+		fat_msg(sb, KERN_ERR, "failed to mount! (ENOMEM)");
 		ST_LOG("<%s> failed to mount! %d:%d (ENOMEM)", __func__, MAJOR(sb->s_dev), MINOR(sb->s_dev));
 		return -ENOMEM;
 	}
