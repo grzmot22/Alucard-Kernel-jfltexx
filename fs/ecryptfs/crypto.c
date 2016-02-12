@@ -486,7 +486,7 @@ int ecryptfs_encrypt_page(struct page *page)
 {
 	struct inode *ecryptfs_inode;
 	struct ecryptfs_crypt_stat *crypt_stat;
-	char *enc_extent_virt;
+	char *enc_extent_virt = NULL;
 	struct page *enc_extent_page = NULL;
 	loff_t extent_offset;
 	int rc = 0;
@@ -503,6 +503,12 @@ int ecryptfs_encrypt_page(struct page *page)
 		goto out;
 	}
 	enc_extent_virt = kmap(enc_extent_page);
+	if (!enc_extent_virt) {
+		rc = -ENOMEM;
+		ecryptfs_printk(KERN_ERR, "Error mapping memory for "
+				"encrypted extent virtual memory\n");
+		goto out;
+	}
 	for (extent_offset = 0;
 	     extent_offset < (PAGE_CACHE_SIZE / crypt_stat->extent_size);
 	     extent_offset++) {
@@ -532,7 +538,8 @@ int ecryptfs_encrypt_page(struct page *page)
 	rc = 0;
 out:
 	if (enc_extent_page) {
-		kunmap(enc_extent_page);
+		if (enc_extent_virt)
+			kunmap(enc_extent_page);
 		__free_page(enc_extent_page);
 	}
 	return rc;
@@ -594,7 +601,7 @@ int ecryptfs_decrypt_page(struct page *page)
 {
 	struct inode *ecryptfs_inode;
 	struct ecryptfs_crypt_stat *crypt_stat;
-	char *enc_extent_virt;
+	char *enc_extent_virt = NULL;
 	struct page *enc_extent_page = NULL;
 	unsigned long extent_offset;
 	int rc = 0;
@@ -611,6 +618,13 @@ int ecryptfs_decrypt_page(struct page *page)
 		goto out;
 	}
 	enc_extent_virt = kmap(enc_extent_page);
+	if (!enc_extent_virt) {
+		rc = -ENOMEM;
+		ecryptfs_printk(KERN_ERR, "Error mapping memory for "
+				"encrypted extent virtual memory\n");
+		goto out;
+	}
+
 	for (extent_offset = 0;
 	     extent_offset < (PAGE_CACHE_SIZE / crypt_stat->extent_size);
 	     extent_offset++) {
@@ -639,7 +653,8 @@ int ecryptfs_decrypt_page(struct page *page)
 	}
 out:
 	if (enc_extent_page) {
-		kunmap(enc_extent_page);
+		if (enc_extent_virt)
+			kunmap(enc_extent_page);
 		__free_page(enc_extent_page);
 	}
 	return rc;
@@ -1014,13 +1029,6 @@ int ecryptfs_new_file_context(struct inode *ecryptfs_inode)
 
 	ecryptfs_set_default_crypt_stat_vals(crypt_stat, mount_crypt_stat);
 	crypt_stat->flags |= (ECRYPTFS_ENCRYPTED | ECRYPTFS_KEY_VALID);
-#if 1 // FEATURE_SDCARD_ENCRYPTION  DEBUG
-	if (mount_crypt_stat && (mount_crypt_stat->flags & ECRYPTFS_DECRYPTION_ONLY))
-	{
-		printk(KERN_ERR "%s:%d::CHECK decryption_only set, try encryption disable\n", __FUNCTION__,__LINE__);
-	//	crypt_stat->flags &= ~(ECRYPTFS_ENCRYPTED);
-	}
-#endif
 	ecryptfs_copy_mount_wide_flags_to_inode_flags(crypt_stat,
 						      mount_crypt_stat);
 	rc = ecryptfs_copy_mount_wide_sigs_to_inode_sigs(crypt_stat,
@@ -1379,23 +1387,12 @@ int ecryptfs_write_metadata(struct dentry *ecryptfs_dentry,
 {
 	struct ecryptfs_crypt_stat *crypt_stat =
 		&ecryptfs_inode_to_private(ecryptfs_inode)->crypt_stat;
-#if 1 // FEATURE_SDCARD_ENCRYPTION DEBUG
-	struct ecryptfs_mount_crypt_stat *mount_crypt_stat =
-                &ecryptfs_superblock_to_private(
-                        ecryptfs_dentry->d_sb)->mount_crypt_stat;
-#endif
 	unsigned int order;
 	char *virt;
 	size_t virt_len;
 	size_t size = 0;
 	int rc = 0;
 
-#if 1 // FEATURE_SDCARD_ENCRYPTION DEBUG
-if (mount_crypt_stat && (mount_crypt_stat->flags
-                        & ECRYPTFS_DECRYPTION_ONLY)) {
-ecryptfs_printk(KERN_ERR, "%s:%d:: Error decryption_only set \n", __FUNCTION__, __LINE__);
-}
-#endif
 	if (likely(crypt_stat->flags & ECRYPTFS_ENCRYPTED)) {
 		if (!(crypt_stat->flags & ECRYPTFS_KEY_VALID)) {
 			printk(KERN_ERR "Key is invalid; bailing out\n");
@@ -1800,7 +1797,7 @@ ecryptfs_process_key_cipher(struct crypto_blkcipher **key_tfm,
 {
 	char dummy_key[ECRYPTFS_MAX_KEY_BYTES];
 	char *full_alg_name = NULL;
-	int rc = 0;
+	int rc;
 
 	*key_tfm = NULL;
 	if (*key_size > ECRYPTFS_MAX_KEY_BYTES) {
@@ -2120,6 +2117,7 @@ ecryptfs_decode_from_filename(unsigned char *dst, size_t *dst_size,
 			break;
 		case 2:
 			dst[dst_byte_offset++] |= (src_byte);
+			dst[dst_byte_offset] = 0;
 			current_bit_offset = 0;
 			break;
 		}

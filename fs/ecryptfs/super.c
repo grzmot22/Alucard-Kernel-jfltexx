@@ -167,6 +167,10 @@ static int ecryptfs_show_options(struct seq_file *m, struct dentry *root)
 	if (mount_crypt_stat->global_default_cipher_key_size)
 		seq_printf(m, ",ecryptfs_key_bytes=%zd",
 			   mount_crypt_stat->global_default_cipher_key_size);
+#ifdef CONFIG_WTL_ENCRYPTION_FILTER
+	if (mount_crypt_stat->flags & ECRYPTFS_ENABLE_FILTERING)
+		seq_printf(m, ",ecryptfs_enable_filtering");
+#endif
 	if (mount_crypt_stat->flags & ECRYPTFS_PLAINTEXT_PASSTHROUGH_ENABLED)
 		seq_printf(m, ",ecryptfs_passthrough");
 	if (mount_crypt_stat->flags & ECRYPTFS_XATTR_METADATA_ENABLED)
@@ -177,8 +181,6 @@ static int ecryptfs_show_options(struct seq_file *m, struct dentry *root)
 		seq_printf(m, ",ecryptfs_unlink_sigs");
 	if (mount_crypt_stat->flags & ECRYPTFS_GLOBAL_MOUNT_AUTH_TOK_ONLY)
 		seq_printf(m, ",ecryptfs_mount_auth_tok_only");
-	if (mount_crypt_stat->flags & ECRYPTFS_DECRYPTION_ONLY) // FEATURE_SDCARD_ENCRYPTION
-		seq_printf(m, ",decryption_only");
 
 	return 0;
 }
@@ -189,5 +191,5 @@ const struct super_operations ecryptfs_sops = {
 	.statfs = ecryptfs_statfs,
 	.remount_fs = NULL,
 	.evict_inode = ecryptfs_evict_inode,
-	.show_options = ecryptfs_show_options
+	.show_options = ecryptfs_show_options,
 };

@@ -29,7 +29,9 @@
 #define ECRYPTFS_KERNEL_H
 
 #include <keys/user-type.h>
+#if defined(CONFIG_ENCRYPTED_KEYS) || defined(CONFIG_ENCRYPTED_KEYS_MODULE)
 #include <keys/encrypted-type.h>
+#endif
 #include <linux/fs.h>
 #include <linux/fs_stack.h>
 #include <linux/namei.h>
@@ -40,6 +42,13 @@
 #include <linux/ecryptfs.h>
 #include <linux/crypto.h>
 
+#ifdef CONFIG_WTL_ENCRYPTION_FILTER
+#define ENC_NAME_FILTER_MAX_INSTANCE 5
+#define ENC_NAME_FILTER_MAX_LEN (256*5)
+#define ENC_EXT_FILTER_MAX_INSTANCE 60
+#define ENC_EXT_FILTER_MAX_LEN 16
+#endif
+
 #define ECRYPTFS_DEFAULT_IV_BYTES 16
 #define ECRYPTFS_DEFAULT_EXTENT_SIZE 4096
 #define ECRYPTFS_MINIMUM_HEADER_EXTENT_SIZE 8192
@@ -49,10 +58,6 @@
 #define ECRYPTFS_DEFAULT_NUM_USERS 4
 #define ECRYPTFS_MAX_NUM_USERS 32768
 #define ECRYPTFS_XATTR_NAME "user.ecryptfs"
-
-//seunggul.yang Media Excepton [S]
-//#define FEATURE_SDCARD_MEDIAEXN_SYSTEMCALL_ENCRYPTION
-//seunggul.yang Media Excepton [E]
 
 void ecryptfs_dump_auth_tok(struct ecryptfs_auth_tok *auth_tok);
 extern void ecryptfs_to_hex(char *dst, char *src, size_t src_size);
@@ -138,8 +143,9 @@ ecryptfs_get_key_payload_data(struct key *key)
 #define ECRYPTFS_SIZE_AND_MARKER_BYTES (ECRYPTFS_FILE_SIZE_BYTES \
 					+ MAGIC_ECRYPTFS_MARKER_SIZE_BYTES)
 #define ECRYPTFS_DEFAULT_CIPHER "aes"
-#define ECRYPTFS_DEFAULT_KEY_BYTES 16
+#define ECRYPTFS_DEFAULT_KEY_BYTES 32
 #define ECRYPTFS_DEFAULT_HASH "md5"
+#define ECRYPTFS_SHA256_HASH "sha256"
 #define ECRYPTFS_TAG_70_DIGEST ECRYPTFS_DEFAULT_HASH
 #define ECRYPTFS_TAG_1_PACKET_TYPE 0x01
 #define ECRYPTFS_TAG_3_PACKET_TYPE 0x8C
@@ -166,6 +172,7 @@ ecryptfs_get_key_payload_data(struct key *key)
 #define ECRYPTFS_FILENAME_MIN_RANDOM_PREPEND_BYTES 16
 #define ECRYPTFS_NON_NULL 0x42 /* A reasonable substitute for NULL */
 #define MD5_DIGEST_SIZE 16
+#define SHA256_HASH_SIZE 32
 #define ECRYPTFS_TAG_70_DIGEST_SIZE MD5_DIGEST_SIZE
 #define ECRYPTFS_TAG_70_MIN_METADATA_SIZE (1 + ECRYPTFS_MIN_PKT_LEN_SIZE \
 					   + ECRYPTFS_SIG_SIZE + 1 + 1)
@@ -173,8 +180,10 @@ ecryptfs_get_key_payload_data(struct key *key)
 					   + ECRYPTFS_SIG_SIZE + 1 + 1)
 #define ECRYPTFS_FEK_ENCRYPTED_FILENAME_PREFIX "ECRYPTFS_FEK_ENCRYPTED."
 #define ECRYPTFS_FEK_ENCRYPTED_FILENAME_PREFIX_SIZE 23
-#define ECRYPTFS_FNEK_ENCRYPTED_FILENAME_PREFIX "ECRYPTFS_FNEK_ENCRYPTED."
-#define ECRYPTFS_FNEK_ENCRYPTED_FILENAME_PREFIX_SIZE 24
+//#define ECRYPTFS_FNEK_ENCRYPTED_FILENAME_PREFIX "ECRYPTFS_FNEK_ENCRYPTED."
+//#define ECRYPTFS_FNEK_ENCRYPTED_FILENAME_PREFIX_SIZE 24
+#define ECRYPTFS_FNEK_ENCRYPTED_FILENAME_PREFIX "EN."
+#define ECRYPTFS_FNEK_ENCRYPTED_FILENAME_PREFIX_SIZE 3
 #define ECRYPTFS_ENCRYPTED_DENTRY_NAME_LEN (18 + 1 + 4 + 1 + 32)
 
 #ifdef CONFIG_ECRYPT_FS_MESSAGING
@@ -229,6 +238,9 @@ struct ecryptfs_crypt_stat {
 #define ECRYPTFS_ENCFN_USE_FEK        0x00001000
 #define ECRYPTFS_UNLINK_SIGS          0x00002000
 #define ECRYPTFS_I_SIZE_INITIALIZED   0x00004000
+#ifdef CONFIG_WTL_ENCRYPTION_FILTER
+#define ECRYPTFS_ENCRYPTED_OTHER_DEVICE 0x00008000
+#endif
 	u32 flags;
 	unsigned int file_version;
 	size_t iv_bytes;
@@ -336,7 +348,10 @@ struct ecryptfs_mount_crypt_stat {
 #define ECRYPTFS_GLOBAL_ENCFN_USE_MOUNT_FNEK   0x00000020
 #define ECRYPTFS_GLOBAL_ENCFN_USE_FEK          0x00000040
 #define ECRYPTFS_GLOBAL_MOUNT_AUTH_TOK_ONLY    0x00000080
-#define ECRYPTFS_DECRYPTION_ONLY	       0x00000100 // FEATURE_SDCARD_ENCRYPTION
+#ifdef CONFIG_WTL_ENCRYPTION_FILTER
+#define ECRYPTFS_ENABLE_FILTERING              0x00000100
+#define ECRYPTFS_ENABLE_NEW_PASSTHROUGH        0x00000200
+#endif
 	u32 flags;
 	struct list_head global_auth_tok_list;
 	struct mutex global_auth_tok_list_mutex;
@@ -347,6 +362,13 @@ struct ecryptfs_mount_crypt_stat {
 	unsigned char global_default_fn_cipher_name[
 		ECRYPTFS_MAX_CIPHER_NAME_SIZE + 1];
 	char global_default_fnek_sig[ECRYPTFS_SIG_SIZE_HEX + 1];
+#ifdef CONFIG_WTL_ENCRYPTION_FILTER
+	int max_name_filter_len;
+	char enc_filter_name[ENC_NAME_FILTER_MAX_INSTANCE]
+				[ENC_NAME_FILTER_MAX_LEN + 1];
+	char enc_filter_ext[ENC_EXT_FILTER_MAX_INSTANCE]
+				[ENC_EXT_FILTER_MAX_LEN + 1];
+#endif
 };
 
 /* superblock private data. */
@@ -733,5 +755,12 @@ int ecryptfs_set_f_namelen(long *namelen, long lower_namelen,
 			   struct ecryptfs_mount_crypt_stat *mount_crypt_stat);
 int ecryptfs_derive_iv(char *iv, struct ecryptfs_crypt_stat *crypt_stat,
 		       loff_t offset);
+
+#ifdef CONFIG_WTL_ENCRYPTION_FILTER
+extern int is_file_name_match(struct ecryptfs_mount_crypt_stat *mcs,
+			      struct dentry *fp_dentry);
+extern int is_file_ext_match(struct ecryptfs_mount_crypt_stat *mcs,
+			     char *str);
+#endif
 
 #endif /* #ifndef ECRYPTFS_KERNEL_H */
