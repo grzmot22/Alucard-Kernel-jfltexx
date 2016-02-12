@@ -34,8 +34,9 @@ void __fat_fs_error(struct super_block *sb, int report, const char *fmt, ...)
 		vaf.va = &args;
 		printk(KERN_ERR "FAT-fs (%s[%d:%d]): error, %pV\n",
 				sb->s_id, MAJOR(bd_dev), MINOR(bd_dev), &vaf);
+
 		if (opts->errors == FAT_ERRORS_RO && !(sb->s_flags & MS_RDONLY))
-			ST_LOG("FAT-fs (%s[%d:%d]): error, %pV\n",
+	    			ST_LOG("FAT-fs (%s[%d:%d]): error, %pV\n",
 				sb->s_id, MAJOR(bd_dev), MINOR(bd_dev), &vaf);
 		va_end(args);
 	}
@@ -48,6 +49,7 @@ void __fat_fs_error(struct super_block *sb, int report, const char *fmt, ...)
 		printk(KERN_ERR "FAT-fs (%s[%d:%d]): Filesystem has been "
 				"set read-only\n",
 				sb->s_id, MAJOR(bd_dev), MINOR(bd_dev));
+
 		ST_LOG("FAT-fs (%s[%d:%d]): Filesystem has been set read-only\n",
 				sb->s_id, MAJOR(bd_dev), MINOR(bd_dev));
 	}
@@ -107,7 +109,7 @@ int fat_clusters_flush(struct super_block *sb)
 			fsinfo->free_clusters = cpu_to_le32(sbi->free_clusters);
 		if (sbi->prev_free != -1)
 			fsinfo->next_cluster = cpu_to_le32(sbi->prev_free);
-		mark_buffer_dirty(bh);
+		mark_buffer_dirty_sync(bh);
 	}
 	brelse(bh);
 
@@ -291,7 +293,7 @@ int fat_sync_bhs(struct buffer_head **bhs, int nr_bhs)
 	int i, err = 0;
 
 	for (i = 0; i < nr_bhs; i++)
-		write_dirty_buffer(bhs[i], WRITE_SYNC);
+		write_dirty_buffer(bhs[i], WRITE);
 
 	for (i = 0; i < nr_bhs; i++) {
 		wait_on_buffer(bhs[i]);
