@@ -279,9 +279,6 @@ int notrace persistent_ram_write(struct persistent_ram_zone *prz,
 	int c = count;
 	size_t start;
 
-	if (unlikely(prz->buffer->sig != PERSISTENT_RAM_SIG))
-		return -EINVAL;
-
 	if (unlikely(c > prz->buffer_size)) {
 		s += c - prz->buffer_size;
 		c = prz->buffer_size;
@@ -384,15 +381,29 @@ static int __devinit persistent_ram_buffer_init(const char *name,
 	return -EINVAL;
 }
 
-static int __devinit persistent_ram_post_init(struct persistent_ram_zone *prz, bool ecc, struct persistent_ram *ram)
+static  __devinit
+struct persistent_ram_zone *__persistent_ram_init(struct device *dev, bool ecc)
 {
-	int ret;
+	struct persistent_ram *ram;
+	struct persistent_ram_zone *prz;
+	int ret = -ENOMEM;
+
+	prz = kzalloc(sizeof(struct persistent_ram_zone), GFP_KERNEL);
+	if (!prz) {
+		pr_err("persistent_ram: failed to allocate persistent ram zone\n");
+		goto err;
+	}
+
+	ret = persistent_ram_buffer_init(dev_name(dev), prz, &ram);
+	if (ret) {
+		pr_err("persistent_ram: failed to initialize buffer\n");
+		goto err;
+	}
 
 	prz->ecc = ecc;
-
 	ret = persistent_ram_init_ecc(prz, prz->buffer_size, ram);
 	if (ret)
-		return ret;
+		goto err;
 
 	if (prz->buffer->sig == PERSISTENT_RAM_SIG) {
 		if (buffer_size(prz) > prz->buffer_size ||
@@ -414,30 +425,6 @@ static int __devinit persistent_ram_post_init(struct persistent_ram_zone *prz, b
 	prz->buffer->sig = PERSISTENT_RAM_SIG;
 	atomic_set(&prz->buffer->start, 0);
 	atomic_set(&prz->buffer->size, 0);
-
-	return 0;
-}
-
-static  __devinit
-struct persistent_ram_zone *__persistent_ram_init(struct device *dev, bool ecc)
-{
-	struct persistent_ram *ram;
-	struct persistent_ram_zone *prz;
-	int ret = -ENOMEM;
-
-	prz = kzalloc(sizeof(struct persistent_ram_zone), GFP_KERNEL);
-	if (!prz) {
-		pr_err("persistent_ram: failed to allocate persistent ram zone\n");
-		goto err;
-	}
-
-	ret = persistent_ram_buffer_init(dev_name(dev), prz, &ram);
-	if (ret) {
-		pr_err("persistent_ram: failed to initialize buffer\n");
-		goto err;
-	}
-
-	persistent_ram_post_init(prz, ecc, ram);
 
 	return prz;
 err:
