@@ -479,7 +479,7 @@ config MMC_MSM_SDC2_8_BIT_SUPPORT
 config MMC_MSM_SDC3_SUPPORT
 	boolean "Qualcomm SDC3 support"
 	depends on MMC_MSM
-	default n
+	default y
 	help
 	  Select Y to enable Slot 3.
 
