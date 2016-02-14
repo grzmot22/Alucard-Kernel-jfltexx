@@ -563,7 +563,7 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 		 * RPMB regions are defined in multiples of 128K.
 		 */
 		card->ext_csd.raw_rpmb_size_mult = ext_csd[EXT_CSD_RPMB_MULT];
-		if (ext_csd[EXT_CSD_RPMB_MULT]) {
+		if (ext_csd[EXT_CSD_RPMB_MULT] && mmc_host_cmd23(card->host)) {
 			mmc_part_add(card, ext_csd[EXT_CSD_RPMB_MULT] << 17,
 				EXT_CSD_PART_CONFIG_ACC_RPMB,
 				"rpmb", 0, false,
@@ -621,6 +621,7 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 		/* enable discard feature if emmc is 4.41+ moviNand (EXT_CSD_VENDOR_SPECIFIC_FIELD:64)*/
 		if ((ext_csd[64] & 0x1) && (card->cid.manfid == 0x15))
 			card->ext_csd.feature_support |= MMC_DISCARD_FEATURE;
+		card->ext_csd.data_sector_size = 512;
 	}
 
 out:
