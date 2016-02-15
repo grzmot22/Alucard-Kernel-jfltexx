@@ -568,7 +568,7 @@ static int msm_rpmrs_flush_buffer(
 
 	count = bitmap_weight(msm_rpmrs_buffered, MSM_RPM_ID_LAST);
 
-	req = kzalloc(sizeof(*req) * count, GFP_ATOMIC);
+	req = kmalloc(sizeof(*req) * count, GFP_ATOMIC);
 	if (!req) {
 		rc = -ENOMEM;
 		goto flush_buffer_restore;
