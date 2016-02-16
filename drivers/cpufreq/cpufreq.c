@@ -1710,8 +1710,6 @@ static int __cpufreq_remove_dev(struct device *dev,
 					"cpufreq");
 			return -EINVAL;
 		}
-		blocking_notifier_call_chain(&cpufreq_policy_notifier_list,
-				CPUFREQ_REMOVE_POLICY, data);
 
 		WARN_ON(lock_policy_rwsem_write(cpu));
 		update_policy_cpu(data, cpu_dev->id);
@@ -1719,6 +1717,8 @@ static int __cpufreq_remove_dev(struct device *dev,
 		pr_debug("%s: policy Kobject moved to cpu: %d from: %d\n",
 				__func__, cpu_dev->id, cpu);
 	}
+	blocking_notifier_call_chain(&cpufreq_policy_notifier_list,
+				CPUFREQ_REMOVE_POLICY, data);
 
 	/* If cpu is last user of policy, free policy */
 	if (cpus == 1) {
