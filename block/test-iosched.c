@@ -1,4 +1,4 @@
-/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -302,7 +302,7 @@ int test_iosched_add_wr_rd_test_req(int is_err_expcted,
 		return -ENODEV;
 	}
 
-	buf_size = sizeof(unsigned int) * BIO_U32_SIZE * num_bios;
+	buf_size = TEST_BIO_SIZE * num_bios;
 	test_rq->bios_buffer = kzalloc(buf_size, GFP_KERNEL);
 	if (!test_rq->bios_buffer) {
 		test_pr_err("%s: Failed to allocate the data buf", __func__);
@@ -380,7 +380,7 @@ static char *get_test_case_str(struct test_data *td)
  * Verify that the test request data buffer includes the expected
  * pattern
  */
-static int compare_buffer_to_pattern(struct test_request *test_rq)
+int compare_buffer_to_pattern(struct test_request *test_rq)
 {
 	int i = 0;
 	int num_of_dwords = test_rq->buf_size/sizeof(int);
@@ -955,16 +955,24 @@ test_latter_request(struct request_queue *q, struct request *rq)
 	return list_entry(rq->queuelist.next, struct request, queuelist);
 }
 
-static void *test_init_queue(struct request_queue *q)
+static int test_init_queue(struct request_queue *q, struct elevator_type *e)
 {
 	struct blk_dev_test_type *__bdt;
+	struct elevator_queue *eq;
+
+	eq = elevator_alloc(q, e);
+	if (!eq)
+		return -ENOMEM;
 
 	ptd = kmalloc_node(sizeof(struct test_data), GFP_KERNEL,
 			     q->node);
 	if (!ptd) {
-		test_pr_err("%s: failed to allocate test data", __func__);
-		return NULL;
+		pr_err("%s: failed to allocate test data", __func__);
+		kobject_put(&eq->kobj);
+		return -ENOMEM;
 	}
+	eq->elevator_data = ptd;
+
 	memset((void *)ptd, 0, sizeof(struct test_data));
 	INIT_LIST_HEAD(&ptd->queue);
 	INIT_LIST_HEAD(&ptd->test_queue);
@@ -977,14 +985,18 @@ static void *test_init_queue(struct request_queue *q)
 	spin_lock_init(&ptd->lock);
 
 	if (test_debugfs_init(ptd)) {
-		test_pr_err("%s: Failed to create debugfs files", __func__);
-		return NULL;
+		pr_err("%s: Failed to create debugfs files", __func__);
+		return -ENOMEM;
 	}
 
 	list_for_each_entry(__bdt, &blk_dev_test_list, list)
 		__bdt->init_fn();
 
-	return ptd;
+	spin_lock_irq(q->queue_lock);
+	q->elevator = eq;
+	spin_unlock_irq(q->queue_lock);
+
+	return 0;
 }
 
 static void test_exit_queue(struct elevator_queue *e)
