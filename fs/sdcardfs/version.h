@@ -13,4 +13,4 @@
  *    - Delete mmap_sem lock in sdcardfs_setattr() to avoid deadlock
  */
 
-#define SDCARDFS_VERSION "2.1.3"
+#define SDCARDFS_VERSION "2.1.1"
