@@ -31,7 +31,7 @@ static spinlock_t cpufreq_stats_lock;
 struct cpufreq_stats {
 	unsigned int cpu;
 	unsigned int total_trans;
-	unsigned long long last_time;
+	unsigned long long  last_time;
 	unsigned int max_state;
 	unsigned int state_num;
 	unsigned int last_index;
@@ -116,7 +116,7 @@ static ssize_t show_time_in_state(struct cpufreq_policy *policy, char *buf)
 	for (i = 0; i < stat->state_num; i++) {
 		len += sprintf(buf + len, "%u %llu\n", stat->freq_table[i],
 			(unsigned long long)
-			jiffies_64_to_clock_t(stat->time_in_state[i]));
+			cputime64_to_clock_t(stat->time_in_state[i]));
 	}
 	return len;
 }
@@ -249,7 +249,7 @@ static ssize_t show_trans_table(struct cpufreq_policy *policy, char *buf)
 		len += snprintf(buf + len, PAGE_SIZE - len, "%9u: ",
 				stat->freq_table[i]);
 
-		for (j = 0; j < stat->state_num; j++) {
+		for (j = 0; j < stat->state_num; j++)   {
 			if (len >= PAGE_SIZE)
 				break;
 			len += snprintf(buf + len, PAGE_SIZE - len, "%9u ",
@@ -303,9 +303,7 @@ static int freq_table_get_index(struct cpufreq_stats *stat, unsigned int freq)
 static void cpufreq_stats_free_table(unsigned int cpu)
 {
 	struct cpufreq_stats *stat = per_cpu(cpufreq_stats_table, cpu);
-
 	if (stat) {
-		pr_debug("%s: Free stat table\n", __func__);
 		kfree(stat->time_in_state);
 		kfree(stat);
 	}
@@ -319,19 +317,13 @@ static void cpufreq_stats_free_sysfs(unsigned int cpu)
 {
 	struct cpufreq_policy *policy = cpufreq_cpu_get(cpu);
 
-	if (!policy)
+	if (!cpufreq_frequency_get_table(cpu))
 		return;
 
-	if (!cpufreq_frequency_get_table(cpu))
-		goto put_ref;
-
-	if (!policy_is_shared(policy)) {
-		pr_debug("%s: Free sysfs stat\n", __func__);
+	if (policy && policy->cpu == cpu)
 		sysfs_remove_group(&policy->kobj, &stats_attr_group);
-	}
-
-put_ref:
-	cpufreq_cpu_put(policy);
+	if (policy)
+		cpufreq_cpu_put(policy);
 }
 
 static void cpufreq_allstats_free(void)
@@ -684,8 +676,9 @@ static int cpufreq_stats_create_table_cpu(unsigned int cpu)
 	for (i = 0; table[i].frequency != CPUFREQ_TABLE_END; i++) {
 		unsigned int freq = table[i].frequency;
 
-		if (freq != CPUFREQ_ENTRY_INVALID)
-			count++;
+		if (freq == CPUFREQ_ENTRY_INVALID)
+			continue;
+		count++;
 	}
 
 	if (!per_cpu(all_cpufreq_stats, cpu))

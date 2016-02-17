@@ -1055,10 +1055,9 @@ static int get_transition_latency(struct powernow_k8_data *data)
 static int transition_frequency_fidvid(struct powernow_k8_data *data,
 		unsigned int index)
 {
-	struct cpufreq_policy *policy;
 	u32 fid = 0;
 	u32 vid = 0;
-	int res;
+	int res, i;
 	struct cpufreq_freqs freqs;
 
 	pr_debug("cpu %d transition to index %u\n", smp_processor_id(), index);
@@ -1087,10 +1086,10 @@ static int transition_frequency_fidvid(struct powernow_k8_data *data,
 	freqs.old = find_khz_freq_from_fid(data->currfid);
 	freqs.new = find_khz_freq_from_fid(fid);
 
-	policy = cpufreq_cpu_get(smp_processor_id());
-	cpufreq_cpu_put(policy);
-
-	cpufreq_notify_transition(policy, &freqs, CPUFREQ_PRECHANGE);
+	for_each_cpu(i, data->available_cores) {
+		freqs.cpu = i;
+		cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
+	}
 
 	res = transition_fid_vid(data, fid, vid);
 	if (res)
@@ -1098,7 +1097,10 @@ static int transition_frequency_fidvid(struct powernow_k8_data *data,
 
 	freqs.new = find_khz_freq_from_fid(data->currfid);
 
-	cpufreq_notify_transition(policy, &freqs, CPUFREQ_POSTCHANGE);
+	for_each_cpu(i, data->available_cores) {
+		freqs.cpu = i;
+		cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
+	}
 	return res;
 }
 
@@ -1106,7 +1108,6 @@ static int transition_frequency_fidvid(struct powernow_k8_data *data,
 static int transition_frequency_pstate(struct powernow_k8_data *data,
 		unsigned int index)
 {
-	struct cpufreq_policy *policy;
 	u32 pstate = 0;
 	int res, i;
 	struct cpufreq_freqs freqs;
@@ -1122,15 +1123,18 @@ static int transition_frequency_pstate(struct powernow_k8_data *data,
 			data->currpstate);
 	freqs.new = find_khz_freq_from_pstate(data->powernow_table, pstate);
 
-	policy = cpufreq_cpu_get(smp_processor_id());
-	cpufreq_cpu_put(policy);
-
-	cpufreq_notify_transition(policy, &freqs, CPUFREQ_PRECHANGE);
+	for_each_cpu(i, data->available_cores) {
+		freqs.cpu = i;
+		cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
+	}
 
 	res = transition_pstate(data, pstate);
 	freqs.new = find_khz_freq_from_pstate(data->powernow_table, pstate);
 
-	cpufreq_notify_transition(policy, &freqs, CPUFREQ_POSTCHANGE);
+	for_each_cpu(i, data->available_cores) {
+		freqs.cpu = i;
+		cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
+	}
 	return res;
 }
 
