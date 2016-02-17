@@ -1800,6 +1800,8 @@ static void exfat_put_super(struct super_block *sb)
 	}
 
 	sb->s_fs_info = NULL;
+	/* mutex_init is in exfat_fill_super function. only for 3.7+ */
+	mutex_destroy(&sbi->s_lock);
 	kfree(sbi);
 
 	exfat_mnt_msg(sb, 0, err, "unmounted successfully!");
@@ -2164,9 +2166,7 @@ static int exfat_fill_super(struct super_block *sb, void *data, int silent)
 		exfat_mnt_msg(sb, 1, 0, "failed to mount! (ENOMEM)");
 		return -ENOMEM;
 	}
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,7,0)
 	mutex_init(&sbi->s_lock);
-#endif
 	sb->s_fs_info = sbi;
 
 	sb->s_flags |= MS_NODIRATIME;
