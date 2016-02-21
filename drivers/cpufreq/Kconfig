@@ -17,9 +17,6 @@ config CPU_FREQ
 
 if CPU_FREQ
 
-config CPU_FREQ_TABLE
-	tristate
-
 config CPU_FREQ_GOV_COMMON
 	bool
 
@@ -35,7 +32,6 @@ config SCHED_FREQ_INPUT
 
 config CPU_FREQ_STAT
 	tristate "CPU frequency translation statistics"
-	select CPU_FREQ_TABLE
 	default y
 	help
 	  This driver exports CPU frequency statistics information through sysfs
@@ -63,7 +59,7 @@ config MULTI_CPU_POLICY_LIMIT
 
 choice
 	prompt "Default CPUFreq governor"
-	default CPU_FREQ_DEFAULT_GOV_USERSPACE if CPU_FREQ_SA1100 || CPU_FREQ_SA1110
+	default CPU_FREQ_DEFAULT_GOV_USERSPACE if ARM_SA1100_CPUFREQ || ARM_SA1110_CPUFREQ
 	default CPU_FREQ_DEFAULT_GOV_PERFORMANCE
 	help
 	  This option sets which CPUFreq governor shall be loaded at
@@ -205,7 +201,6 @@ config CPU_FREQ_GOV_USERSPACE
 
 config CPU_FREQ_GOV_ONDEMAND
 	tristate "'ondemand' cpufreq policy governor"
-	select CPU_FREQ_TABLE
 	select CPU_FREQ_GOV_COMMON
 	help
 	  'ondemand' - This driver adds a dynamic cpufreq policy governor.
@@ -266,19 +261,16 @@ config CPU_FREQ_GOV_CONSERVATIVE
 config CPU_FREQ_GOV_NIGHTMARE
 	tristate "'nightmare' cpufreq governor"
 	depends on CPU_FREQ
-	select CPU_FREQ_TABLE
 	select CPU_FREQ_GOV_COMMON
 
 config CPU_FREQ_GOV_DARKNESS
 	tristate "'darkness' cpufreq governor"
 	depends on CPU_FREQ
-	select CPU_FREQ_TABLE
 	select CPU_FREQ_GOV_COMMON
 
 config CPU_FREQ_GOV_ALUCARD
 	tristate "'alucard' cpufreq governor"
 	depends on CPU_FREQ
-	select CPU_FREQ_TABLE
 	select CPU_FREQ_GOV_COMMON
 
 config CPU_FREQ_GOV_HYPER
@@ -318,6 +310,17 @@ config SEC_DVFS_BOOSTER
     bool "DVFS input booster"
     default y
     depends on SEC_DVFS
+
+config CPU_BOOST
+	tristate "Event base short term CPU freq boost"
+	depends on CPU_FREQ
+	help
+	  This driver boosts the frequency of one or more CPUs based on
+	  various events that might occur in the system. As of now, the
+	  events it reacts to are:
+	  - Migration of important threads from one CPU to another.
+
+	  If in doubt, say N.
 
 menu "x86 CPU frequency scaling drivers"
 depends on X86
