@@ -178,6 +178,18 @@ static int cpufreq_transition_handler(struct notifier_block *nb,
 	return 0;
 }
 
+static void update_related_cpus(void)
+{
+	unsigned cpu;
+
+	for_each_cpu(cpu, cpu_online_mask) {
+		struct cpu_load_data *this_cpu = &per_cpu(cpuload, cpu);
+		struct cpufreq_policy cpu_policy;
+
+		cpufreq_get_policy(&cpu_policy, cpu);
+		cpumask_copy(this_cpu->related_cpus, cpu_policy.cpus);
+	}
+}
 static int cpu_hotplug_handler(struct notifier_block *nb,
 			unsigned long val, void *data)
 {
@@ -191,6 +203,7 @@ static int cpu_hotplug_handler(struct notifier_block *nb,
 	case CPU_ONLINE:
 		if (!this_cpu->cur_freq)
 			this_cpu->cur_freq = cpufreq_quick_get(cpu);
+		update_related_cpus();
 	case CPU_ONLINE_FROZEN:
 		this_cpu->avg_load_maxfreq = 0;
 	}
@@ -238,7 +251,7 @@ out:
 }
 
 static ssize_t hotplug_disable_show(struct kobject *kobj,
-				    struct kobj_attribute *attr, char *buf)
+		struct kobj_attribute *attr, char *buf)
 {
 	return snprintf(buf, MAX_LONG_SIZE, "%d\n", rq_info.hotplug_disabled);
 }
@@ -293,6 +306,9 @@ static struct kobj_attribute hotplug_enabled_attr =
 
 static void def_work_fn(struct work_struct *work)
 {
+	if (!rq_info.hotplug_enabled)
+		return;
+
 	/* Notify polling threads on change of value */
 	sysfs_notify(rq_info.kobj, NULL, "def_timer_ms");
 }
@@ -404,13 +420,13 @@ static struct kobj_attribute def_timer_ms_attr =
 static ssize_t show_cpu_normalized_load(struct kobject *kobj,
 		struct kobj_attribute *attr, char *buf)
 {
-		return snprintf(buf, MAX_LONG_SIZE, "%u\n",
-			rq_info.hotplug_enabled ? report_load_at_max_freq() : 0);
+	return snprintf(buf, MAX_LONG_SIZE, "%u\n",
+		rq_info.hotplug_enabled ? report_load_at_max_freq() : 0);
 }
 
 static struct kobj_attribute cpu_normalized_load_attr =
-	__ATTR(cpu_normalized_load, S_IWUSR | S_IRUSR,
-			show_cpu_normalized_load, NULL);
+	__ATTR(cpu_normalized_load, S_IWUSR | S_IRUSR, show_cpu_normalized_load,
+			NULL);
 
 static struct attribute *rq_attrs[] = {
 	&cpu_normalized_load_attr.attr,
