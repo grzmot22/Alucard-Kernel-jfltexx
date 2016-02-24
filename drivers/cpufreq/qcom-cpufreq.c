@@ -55,7 +55,6 @@ static struct msm_bus_scale_pdata bus_bw = {
 	.active_only = 1,
 };
 static u32 bus_client;
-static bool hotplug_ready;
 
 struct cpufreq_work_struct {
 	struct work_struct work;
@@ -442,10 +441,6 @@ static int __cpuinit msm_cpufreq_cpu_callback(struct notifier_block *nfb,
 	unsigned int cpu = (unsigned long)hcpu;
 	int rc;
 
-	/* Fail hotplug until this driver can get CPU clocks */
-	if (!hotplug_ready)
-		return NOTIFY_BAD;
-
 	switch (action & ~CPU_TASKS_FROZEN) {
 
 	case CPU_DYING:
@@ -794,7 +789,6 @@ static int __init msm_cpufreq_probe(struct platform_device *pdev)
 
 	if (!cpu_clk[0])
 		return -ENODEV;
-	hotplug_ready = true;
 
 	ret = cpufreq_parse_dt(dev);
 	if (ret)
@@ -836,33 +830,18 @@ static struct platform_driver msm_cpufreq_plat_driver = {
 
 static int __init msm_cpufreq_register(void)
 {
-	int cpu, rc;
+	int cpu;
 
 	for_each_possible_cpu(cpu) {
 		mutex_init(&(per_cpu(cpufreq_suspend, cpu).suspend_mutex));
 		per_cpu(cpufreq_suspend, cpu).device_suspended = 0;
 	}
 
-	rc = platform_driver_probe(&msm_cpufreq_plat_driver,
-				   msm_cpufreq_probe);
-	if (rc < 0) {
-		/* Unblock hotplug if msm-cpufreq probe fails */
-		unregister_hotcpu_notifier(&msm_cpufreq_cpu_notifier);
-		for_each_possible_cpu(cpu)
-			mutex_destroy(&(per_cpu(cpufreq_suspend, cpu).
-					suspend_mutex));
-		return rc;
-	}
-
+	platform_driver_probe(&msm_cpufreq_plat_driver, msm_cpufreq_probe);
 	msm_cpufreq_wq = alloc_workqueue("msm-cpufreq", WQ_HIGHPRI, 0);
+	register_hotcpu_notifier(&msm_cpufreq_cpu_notifier);
 	register_pm_notifier(&msm_cpufreq_pm_notifier);
 	return cpufreq_register_driver(&msm_cpufreq_driver);
 }
 
-subsys_initcall(msm_cpufreq_register);
-
-static int __init msm_cpufreq_early_register(void)
-{
-	return register_hotcpu_notifier(&msm_cpufreq_cpu_notifier);
-}
-core_initcall(msm_cpufreq_early_register);
+device_initcall(msm_cpufreq_register);
