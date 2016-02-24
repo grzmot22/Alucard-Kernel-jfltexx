@@ -357,6 +357,7 @@ out:
 static int __init clk_debug_init(void)
 {
 	struct clk *clk;
+	struct dentry *d;
 
 	rootdir = debugfs_create_dir("clk", NULL);
 
