@@ -20,7 +20,7 @@
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/cpufreq.h>
-#include <mach/cpufreq.h>
+#include <soc/qcom/cpufreq.h>
 #include <linux/cpu.h>
 #include <linux/cpufreq_limit_manager.h>
 #ifdef CONFIG_STATE_NOTIFIER
