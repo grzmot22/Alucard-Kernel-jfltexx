@@ -33,7 +33,7 @@
 #include <mach/socinfo.h>
 #include <mach/msm_bus.h>
 
-#include "acpuclock.h"
+#include "../../arch/arm/mach-msm/acpuclock.h"
 
 #ifdef CONFIG_DEBUG_FS
 #include <linux/debugfs.h>
