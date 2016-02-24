@@ -52,31 +52,29 @@ static void clk_summary_show_subtree(struct seq_file *s, struct clk *c,
 				     int level)
 {
 	struct clk *child;
-	struct hlist_node *tmp;
 
 	if (!c)
 		return;
 
 	clk_summary_show_one(s, c, level);
 
-	hlist_for_each_entry(child, tmp, &c->children, child_node)
+	hlist_for_each_entry(child, &c->children, child_node)
 		clk_summary_show_subtree(s, child, level + 1);
 }
 
 static int clk_summary_show(struct seq_file *s, void *data)
 {
 	struct clk *c;
-	struct hlist_node *tmp;
 
 	seq_printf(s, "   clock                        enable_cnt  prepare_cnt  rate\n");
 	seq_printf(s, "---------------------------------------------------------------------\n");
 
 	mutex_lock(&prepare_lock);
 
-	hlist_for_each_entry(c, tmp, &clk_root_list, child_node)
+	hlist_for_each_entry(c, &clk_root_list, child_node)
 		clk_summary_show_subtree(s, c, 0);
 
-	hlist_for_each_entry(c, tmp, &clk_orphan_list, child_node)
+	hlist_for_each_entry(c, &clk_orphan_list, child_node)
 		clk_summary_show_subtree(s, c, 0);
 
 	mutex_unlock(&prepare_lock);
@@ -111,14 +109,13 @@ static void clk_dump_one(struct seq_file *s, struct clk *c, int level)
 static void clk_dump_subtree(struct seq_file *s, struct clk *c, int level)
 {
 	struct clk *child;
-	struct hlist_node *tmp;
 
 	if (!c)
 		return;
 
 	clk_dump_one(s, c, level);
 
-	hlist_for_each_entry(child, tmp, &c->children, child_node) {
+	hlist_for_each_entry(child, &c->children, child_node) {
 		seq_printf(s, ",");
 		clk_dump_subtree(s, child, level + 1);
 	}
@@ -129,21 +126,20 @@ static void clk_dump_subtree(struct seq_file *s, struct clk *c, int level)
 static int clk_dump(struct seq_file *s, void *data)
 {
 	struct clk *c;
-	struct hlist_node *tmp;
 	bool first_node = true;
 
 	seq_printf(s, "{");
 
 	mutex_lock(&prepare_lock);
 
-	hlist_for_each_entry(c, tmp, &clk_root_list, child_node) {
+	hlist_for_each_entry(c, &clk_root_list, child_node) {
 		if (!first_node)
 			seq_printf(s, ",");
 		first_node = false;
 		clk_dump_subtree(s, c, 0);
 	}
 
-	hlist_for_each_entry(c, tmp, &clk_orphan_list, child_node) {
+	hlist_for_each_entry(c, &clk_orphan_list, child_node) {
 		seq_printf(s, ",");
 		clk_dump_subtree(s, c, 0);
 	}
