@@ -35,7 +35,6 @@ unsigned int scaling_max_gps_freq = CPU_MAX_FREQ;
 static bool suspended = false;
 static bool gps_status = false;
 static bool oncall_status = false;
-static bool immediately_update = false;
 
 #ifdef CONFIG_STATE_NOTIFIER
 static struct notifier_block notif;
@@ -50,7 +49,6 @@ int update_cpufreq_limit(unsigned int limit_type, bool limit_status)
 {
 	unsigned int min_freq = 0;
 	unsigned int max_freq = 0;
-	unsigned int cpu;
 
 	mutex_lock(&cpufreq_limit_mutex);
 	switch (limit_type) {
@@ -87,21 +85,6 @@ int update_cpufreq_limit(unsigned int limit_type, bool limit_status)
 
 	set_min_lock(min_freq);
 	set_max_lock(max_freq);
-
-	if (immediately_update) {
-		for_each_online_cpu(cpu) {
-			struct cpufreq_policy *policy = cpufreq_cpu_get(cpu);
-			if (!policy)
-				continue;			
-			if (policy->cur < min_freq && policy->cur > 0)
-				cpufreq_driver_target(policy,
-					min_freq, CPUFREQ_RELATION_H);
-			else if (policy->cur > max_freq && policy->cur > 0)
-				cpufreq_driver_target(policy,
-					max_freq, CPUFREQ_RELATION_L);
-			cpufreq_cpu_put(policy);
-		}
-	}
 	mutex_unlock(&cpufreq_limit_mutex);
 
 	return 0;
@@ -157,11 +140,6 @@ static ssize_t show_scaling_max_oncall_freq(struct kobject *kobj, struct kobj_at
 static ssize_t show_scaling_max_gps_freq(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
 	return sprintf(buf, "%u\n", scaling_max_gps_freq);
-}
-
-static ssize_t show_immediately_update(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
-{
-	return sprintf(buf, "%u\n", immediately_update);
 }
 
 static ssize_t store_scaling_min_suspend_freq(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
@@ -248,27 +226,6 @@ static ssize_t store_scaling_max_gps_freq(struct kobject *kobj, struct kobj_attr
 	return count;
 }
 
-static ssize_t store_immediately_update(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
-{
-
-	int input;
-	int ret;
-
-	ret = sscanf(buf, "%u", &input);
-	if (ret != 1) {
-		return -EINVAL;
-	}
-
-	input = max(min(input, 1), 0);
-
-	if (input != immediately_update) {
-		/* update only if valid value provided */
-		immediately_update = input;
-	}
-
-	return count;
-}
-
 static struct kobj_attribute scaling_min_suspend_freq_attr =
 	__ATTR(scaling_min_suspend_freq, 0666, show_scaling_min_suspend_freq,
 			store_scaling_min_suspend_freq);
@@ -285,16 +242,11 @@ static struct kobj_attribute scaling_max_gps_freq_attr =
 	__ATTR(scaling_max_gps_freq, 0666, show_scaling_max_gps_freq,
 			store_scaling_max_gps_freq);
 
-static struct kobj_attribute immediately_update_attr =
-	__ATTR(immediately_update, 0666, show_immediately_update,
-			store_immediately_update);
-
 static struct attribute *cpufreq_limit_manager_attrs[] = {
 	&scaling_min_suspend_freq_attr.attr,
 	&scaling_max_suspend_freq_attr.attr,
 	&scaling_max_oncall_freq_attr.attr,
 	&scaling_max_gps_freq_attr.attr,
-	&immediately_update_attr.attr,
 	NULL,
 };
 

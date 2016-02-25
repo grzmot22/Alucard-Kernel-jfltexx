@@ -101,22 +101,12 @@ static void do_input_boost(struct work_struct *work)
 		nr_cpus = NR_CPUS;
 
 	for (cpu = 0; cpu < nr_cpus; cpu++) {
-		struct cpufreq_policy *policy = cpufreq_cpu_get(cpu);
-
 		/* Save user current min & boost lock */
 		limit.user_min_freq_lock[cpu] = get_cpu_min_lock(cpu);
 		limit.user_boost_freq_lock[cpu] = input_boost_freq;
 
 		dprintk("Input boost for CPU%u\n", cpu);
 		set_cpu_min_lock(cpu, limit.user_boost_freq_lock[cpu]);
-
-		if (!policy)
-			continue;
-		if (policy->cur < limit.user_boost_freq_lock[cpu] && policy->cur > 0)
-			cpufreq_driver_target(policy,
-				limit.user_boost_freq_lock[cpu], CPUFREQ_RELATION_L);
-
-		cpufreq_cpu_put(policy);
 	}
 
 	queue_delayed_work_on(BOOT_CPU, touch_boost_wq,
