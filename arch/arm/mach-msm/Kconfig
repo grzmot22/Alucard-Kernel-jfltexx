@@ -1805,6 +1805,27 @@ config ALUCARD_HOTPLUG
 	help
 	  Generic Alucard-hotplug cpu hotplug driver for ARM SOCs
 
+config AUTOSMP
+	bool "Multi-core automatic hotplug support"
+	depends on SMP && HOTPLUG_CPU
+	default n
+	help
+	  Automatically hotplugs the multiple cpu cores on and off
+	  based on cpu load and suspend state
+
+config MAKO_HOTPLUG
+        bool "Enable mako-hotplug cpu hotplug driver"
+        default n
+        help
+          Generic Intelli-plug cpu hotplug driver for ARM SOCs	  
+
+config BLU_PLUG
+ 	bool "Dynamic hotplug driver"
+ 	depends on HOTPLUG_CPU
+ 	default n
+ 	help
+ 	  The Dynamic hotplug driver automatically online/offline CPUs proportional to system load.
+
 config CPU_VOLTAGE_TABLE
 	bool "Enable CPU Voltage Table via sysfs for adjustements"
 	default n
