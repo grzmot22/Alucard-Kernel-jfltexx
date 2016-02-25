@@ -762,24 +762,6 @@ int set_freq_limit(unsigned long id, unsigned int freq)
 	//pr_info("%s: 0x%lu %d, min %d, max %d\n",
 	//			__func__, id, freq, min, max);
 
-	/* need to update now */
-	if (id & UPDATE_NOW_BITS) {
-		int cpu;
-
-		for_each_online_cpu(cpu) {
-			struct cpufreq_policy *policy = cpufreq_cpu_get(cpu);
-			if (!policy)
-				continue;
-			if (policy->cur < min && policy->cur > 0)
-				cpufreq_driver_target(policy,
-					min, CPUFREQ_RELATION_H);
-			else if (policy->cur > max && policy->cur > 0)
-				cpufreq_driver_target(policy,
-					max, CPUFREQ_RELATION_L);
-			cpufreq_cpu_put(policy);
-		}
-	}
-
 	mutex_unlock(&dvfs_mutex);
 
 	return 0;
