@@ -89,21 +89,17 @@ int update_cpufreq_limit(unsigned int limit_type, bool limit_status)
 	set_max_lock(max_freq);
 
 	if (immediately_update) {
-		unsigned int cur = 0;
-
 		for_each_online_cpu(cpu) {
-			cur = cpufreq_quick_get(cpu);
-			if (cur) {
-				struct cpufreq_policy policy;
-				policy.cpu = cpu;
-
-				if (cur < min_freq)
-					cpufreq_driver_target(&policy,
-						min_freq, CPUFREQ_RELATION_H);
-				else if (cur > max_freq)
-					cpufreq_driver_target(&policy,
-						max_freq, CPUFREQ_RELATION_L);
-			}
+			struct cpufreq_policy *policy = cpufreq_cpu_get(cpu);
+			if (!policy)
+				continue;			
+			if (policy->cur < min_freq && policy->cur > 0)
+				cpufreq_driver_target(policy,
+					min_freq, CPUFREQ_RELATION_H);
+			else if (policy->cur > max_freq && policy->cur > 0)
+				cpufreq_driver_target(policy,
+					max_freq, CPUFREQ_RELATION_L);
+			cpufreq_cpu_put(policy);
 		}
 	}
 	mutex_unlock(&cpufreq_limit_mutex);
