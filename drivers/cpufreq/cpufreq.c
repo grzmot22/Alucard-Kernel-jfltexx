@@ -2827,19 +2827,43 @@ static int __init cpufreq_core_init(void)
 	if (cpufreq_disabled())
 		return -ENODEV;
 
-	cpufreq_global_kobject = kobject_create_and_add("cpufreq", &cpu_subsys.dev_root->kobj);
+	cpufreq_global_kobject = kobject_create();
 	BUG_ON(!cpufreq_global_kobject);
 	register_syscore_ops(&cpufreq_syscore_ops);
 #ifdef CONFIG_CPU_VOLTAGE_TABLE
-	rc = sysfs_create_group(cpufreq_global_kobject, &vddtbl_attr_group);
+	rc = cpufreq_get_global_kobject();
+	if (!rc) {
+		rc = sysfs_create_group(cpufreq_global_kobject, &vddtbl_attr_group);
+		if (rc) {
+			pr_err("%s: Unable to create vddtbl_attr_group.\n",
+				__func__);
+			cpufreq_put_global_kobject();
+		}
+	}	
 #endif	/* CONFIG_CPU_VOLTAGE_TABLE */
 
 #ifdef CONFIG_GPU_VOLTAGE_TABLE
-	rc = sysfs_create_group(cpufreq_global_kobject, &gpuvddtbl_attr_group);
+	rc = cpufreq_get_global_kobject();
+	if (!rc) {
+		rc = sysfs_create_group(cpufreq_global_kobject, &gpuvddtbl_attr_group);
+		if (rc) {
+			pr_err("%s: Unable to create gpuvddtbl_attr_group.\n",
+				__func__);
+			cpufreq_put_global_kobject();
+		}
+	}
 #endif	/* CONFIG_GPU_VOLTAGE_TABLE */
 
 #ifdef CONFIG_MULTI_CPU_POLICY_LIMIT
-	rc = sysfs_create_group(cpufreq_global_kobject, &all_cpus_attr_group);
+	rc = cpufreq_get_global_kobject();
+	if (!rc) {
+		rc = sysfs_create_group(cpufreq_global_kobject, &all_cpus_attr_group);
+		if (rc) {
+			pr_err("%s: Unable to create all_cpus_attr_group.\n",
+				__func__);
+			cpufreq_put_global_kobject();
+		}
+	}
 #endif	/* CONFIG_MULTI_CPU_POLICY_LIMIT */
 
 	return 0;
