@@ -11,18 +11,12 @@
 #ifndef _LINUX_CPUFREQ_H
 #define _LINUX_CPUFREQ_H
 
-#include <asm/cputime.h>
-#include <linux/mutex.h>
-#include <linux/notifier.h>
-#include <linux/threads.h>
-#include <linux/kobject.h>
-#include <linux/sysfs.h>
-#include <linux/completion.h>
-#include <linux/workqueue.h>
 #include <linux/cpumask.h>
-#include <asm/div64.h>
-#include <linux/kernel_stat.h>
-#include <linux/sched/rt.h>
+#include <linux/completion.h>
+#include <linux/kobject.h>
+#include <linux/notifier.h>
+#include <linux/sysfs.h>
+#include <asm/cputime.h>
 
 /*********************************************************************
  *                        CPUFREQ INTERFACE                          *
