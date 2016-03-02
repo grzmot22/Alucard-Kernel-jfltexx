@@ -27,7 +27,7 @@
 #include <linux/state_notifier.h>
 #endif
 
-unsigned int scaling_min_suspend_freq = 378000;
+unsigned int scaling_min_suspend_freq = CPU_MIN_FREQ;
 unsigned int scaling_max_suspend_freq = CPU_MAX_FREQ;
 unsigned int scaling_max_oncall_freq = CPU_MAX_ONCALL_FREQ;
 unsigned int scaling_max_gps_freq = CPU_MAX_FREQ;
