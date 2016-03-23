@@ -13,10 +13,6 @@ export PARENT_DIR=`readlink -f ..`
 export INITRAMFS_TMP=/tmp/initramfs_source;
 export INITRAMFS_SOURCE=`readlink -f ..`/Ramdisk
 export PACKAGEDIR=$KERNELDIR/READY-JB
-#Enable FIPS mode
-export USE_SEC_FIPS_MODE=true
-export ARCH=arm
-export CROSS_COMPILE=$KERNELDIR/android-toolchain/bin/arm-eabi-
 export KERNEL_CONFIG=alucard_defconfig;
 
 chmod -R 777 /tmp;
@@ -94,16 +90,15 @@ NAMBEROFCPUS=$(expr `grep processor /proc/cpuinfo | wc -l` + 1);
 echo $HOST_CHECK
 
 echo "Making kernel";
-make -j${NAMBEROFCPUS} || exit 1;
+time make ARCH=arm CROSS_COMPILE=android-toolchain/bin/arm-eabi- CC='android-toolchain/bin/arm-eabi-gcc --sysroot=android-toolchain/arm-LG-linux-gnueabi/sysroot/' zImage -j ${NAMBEROFCPUS}
+stat "$KERNELDIR"/arch/arm/boot/zImage || exit 1;
+
+echo "Compiling Modules............"
+time make ARCH=arm CROSS_COMPILE=android-toolchain/bin/arm-eabi- CC='android-toolchain/bin/arm-eabi-gcc --sysroot=android-toolchain/arm-LG-linux-gnueabi/sysroot/' modules -j ${NR_CPUS} || exit 1
 
 echo "Copy modules to Package"
 for i in `find $KERNELDIR -name '*.ko'`; do
 	cp -av $i $PACKAGEDIR/system/lib/modules/;
-done;
-
-for i in `find $PACKAGEDIR/system/lib/modules/ -name '*.ko'`; do
-	${CROSS_COMPILE}strip --strip-unneeded $i;
-	${CROSS_COMPILE}strip --strip-debug $i;
 done;
 
 chmod 644 $PACKAGEDIR/system/lib/modules/*;
@@ -111,6 +106,10 @@ chmod 644 $PACKAGEDIR/system/lib/modules/*;
 if [ -e $KERNELDIR/arch/arm/boot/zImage ]; then
 	echo "Copy zImage to Package"
 	cp arch/arm/boot/zImage $PACKAGEDIR/zImage
+
+	# strip not needed debugs from modules.
+	android-toolchain/bin/arm-eabi-strip --strip-unneeded $PACKAGEDIR/system/lib/modules/* 2>/dev/null
+	android-toolchain/bin/arm-eabi-strip --strip-debug $PACKAGEDIR/system/lib/modules/* 2>/dev/null
 
 	echo "Make boot.img"
 	./mkbootfs $INITRAMFS_TMP | gzip > $PACKAGEDIR/ramdisk.gz
