@@ -3,14 +3,17 @@
 LANG=C
 
 cp -pv .config .config.bkp;
-make ARCH=arm CROSS_COMPILE=./android-toolchain/bin/arm-eabi- mrproper;
+make ARCH=arm mrproper;
+make clean;
 cp -pv .config.bkp .config;
-make clean && make mrproper;
+
 rm -rf ./kernel/usr;
 rm -rf READY-JB/system/lib;
 rm -rf READY-JB/*.zip;
 rm -rf READY-JB/boot.img;
-sh clean-junk.sh;
+
+git checkout android-toolchain/
+
 # clean ccache
 read -t 5 -p "clean ccache, 5sec timeout (y/n)?";
 if [ "$REPLY" == "y" ]; then
