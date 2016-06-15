@@ -267,7 +267,7 @@ void clear_tasks_mm_cpumask(int cpu)
 	rcu_read_unlock();
 }
 
-static inline void check_for_tasks(int cpu)
+static inline void check_for_tasks(int cpu)//??????? ??? ?????
 {
 	struct task_struct *p;
 	cputime_t utime, stime;
@@ -594,6 +594,22 @@ void __weak arch_enable_nonboot_cpus_end(void)
 void __ref enable_nonboot_cpus(void)
 {
 	int cpu, error;
+	struct device *cpu_device;
+#if defined(CONFIG_MACH_MSM8974_B1_KR) || defined(CONFIG_MACH_MSM8974_B1W)
+	static int first = 0;
+	if (!first) {
+		init_timer(&boost_freq_timer);
+		first = 1;
+	}
+
+	if (timer_pending(&boost_freq_timer))
+		del_timer(&boost_freq_timer);
+	boost_freq_timer.function = boost_freq_timer_cb;
+	boost_freq_timer.expires =
+	jiffies + msecs_to_jiffies(BOOST_FREQ_TIME_MS);
+	add_timer(&boost_freq_timer);
+	boost_freq = 1;
+#endif
 
 	/* Allow everyone to use the CPU hotplug again */
 	cpu_maps_update_begin();
@@ -609,6 +625,12 @@ void __ref enable_nonboot_cpus(void)
 		error = _cpu_up(cpu, 1);
 		if (!error) {
 			printk(KERN_INFO "CPU%d is up\n", cpu);
+			cpu_device = get_cpu_device(cpu);
+			if (!cpu_device)
+				pr_err("%s: failed to get cpu%d device\n",
+				       __func__, cpu);
+			else
+				kobject_uevent(&cpu_device->kobj, KOBJ_ONLINE);
 			continue;
 		}
 		printk(KERN_WARNING "Error taking CPU%d up: %d\n", cpu, error);
