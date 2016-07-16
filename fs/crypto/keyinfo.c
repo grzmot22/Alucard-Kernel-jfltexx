@@ -10,7 +10,6 @@
 
 #include <keys/encrypted-type.h>
 #include <keys/user-type.h>
-#include <linux/module.h>
 #include <linux/random.h>
 #include <linux/scatterlist.h>
 #include <linux/keyctl.h>

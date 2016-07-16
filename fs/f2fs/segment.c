@@ -44,65 +44,6 @@ static unsigned long __reverse_ulong(unsigned char *str)
 	return tmp;
 }
 
-/**
- * Copied from latest lib/llist.c
- * llist_for_each_entry_safe - iterate over some deleted entries of
- *                             lock-less list of given type
- *			       safe against removal of list entry
- * @pos:	the type * to use as a loop cursor.
- * @n:		another type * to use as temporary storage
- * @node:	the first entry of deleted list entries.
- * @member:	the name of the llist_node with the struct.
- *
- * In general, some entries of the lock-less list can be traversed
- * safely only after being removed from list, so start with an entry
- * instead of list head.
- *
- * If being used on entries deleted from lock-less list directly, the
- * traverse order is from the newest to the oldest added entry.  If
- * you want to traverse from the oldest to the newest, you must
- * reverse the order by yourself before traversing.
- */
-#define llist_for_each_entry_safe(pos, n, node, member)			       \
-	for (pos = llist_entry((node), typeof(*pos), member);		       \
-		&pos->member != NULL &&					       \
-		(n = llist_entry(pos->member.next, typeof(*n), member), true); \
-		pos = n)
-
-/**
- * Copied from latest lib/llist.c
- * llist_reverse_order - reverse order of a llist chain
- * @head:	first item of the list to be reversed
- *
- * Reverse the order of a chain of llist entries and return the
- * new first entry.
- */
-struct llist_node *llist_reverse_order(struct llist_node *head)
-{
-	struct llist_node *new_head = NULL;
-
-	while (head) {
-		struct llist_node *tmp = head;
-		head = head->next;
-		tmp->next = new_head;
-		new_head = tmp;
-	}
-
-	return new_head;
-}
-
-/**
- * Copied from latest linux/list.h
- * list_last_entry - get the last element from a list
- * @ptr:        the list head to take the element from.
- * @type:       the type of the struct this is embedded in.
- * @member:     the name of the list_struct within the struct.
- *
- * Note, that list is expected to be not empty.
- */
-#define list_last_entry(ptr, type, member) \
-	list_entry((ptr)->prev, type, member)
-
 /*
  * __reverse_ffs is copied from include/asm-generic/bitops/__ffs.h since
  * MSB and LSB are reversed in a byte by f2fs_set_bit.
@@ -445,33 +386,6 @@ void f2fs_balance_fs_bg(struct f2fs_sb_info *sbi)
 	}
 }
 
-struct __submit_bio_ret {
-	struct completion event;
-	int error;
-};
-
-static void __submit_bio_wait_endio(struct bio *bio, int error)
-{
-	struct __submit_bio_ret *ret = bio->bi_private;
-
-	ret->error = error;
-	complete(&ret->event);
-}
-
-static int __submit_bio_wait(int rw, struct bio *bio)
-{
-	struct __submit_bio_ret ret;
-
-	rw |= REQ_SYNC;
-	init_completion(&ret.event);
-	bio->bi_private = &ret;
-	bio->bi_end_io = __submit_bio_wait_endio;
-	submit_bio(rw, bio);
-	wait_for_completion(&ret.event);
-
-	return ret.error;
-}
-
 static int issue_flush_thread(void *data)
 {
 	struct f2fs_sb_info *sbi = data;
@@ -492,7 +406,7 @@ repeat:
 		fcc->dispatch_list = llist_reverse_order(fcc->dispatch_list);
 
 		bio->bi_bdev = sbi->sb->s_bdev;
-		ret = __submit_bio_wait(WRITE_FLUSH, bio);
+		ret = submit_bio_wait(WRITE_FLUSH, bio);
 
 		llist_for_each_entry_safe(cmd, next,
 					  fcc->dispatch_list, llnode) {
@@ -524,7 +438,7 @@ int f2fs_issue_flush(struct f2fs_sb_info *sbi)
 		int ret;
 
 		bio->bi_bdev = sbi->sb->s_bdev;
-		ret = __submit_bio_wait(WRITE_FLUSH, bio);
+		ret = submit_bio_wait(WRITE_FLUSH, bio);
 		bio_put(bio);
 		return ret;
 	}
@@ -1621,8 +1535,7 @@ void f2fs_wait_on_page_writeback(struct page *page,
 		if (ordered)
 			wait_on_page_writeback(page);
 		else
-			/* wait_for_stable_page(page) doesn't support */
-			wait_on_page_writeback(page);
+			wait_for_stable_page(page);
 	}
 }
 
@@ -2506,7 +2419,7 @@ static void discard_dirty_segmap(struct f2fs_sb_info *sbi,
 	struct dirty_seglist_info *dirty_i = DIRTY_I(sbi);
 
 	mutex_lock(&dirty_i->seglist_lock);
-	f2fs_kvfree(dirty_i->dirty_segmap[dirty_type]);
+	kvfree(dirty_i->dirty_segmap[dirty_type]);
 	dirty_i->nr_dirty[dirty_type] = 0;
 	mutex_unlock(&dirty_i->seglist_lock);
 }
@@ -2514,7 +2427,7 @@ static void discard_dirty_segmap(struct f2fs_sb_info *sbi,
 static void destroy_victim_secmap(struct f2fs_sb_info *sbi)
 {
 	struct dirty_seglist_info *dirty_i = DIRTY_I(sbi);
-	f2fs_kvfree(dirty_i->victim_secmap);
+	kvfree(dirty_i->victim_secmap);
 }
 
 static void destroy_dirty_segmap(struct f2fs_sb_info *sbi)
@@ -2555,8 +2468,8 @@ static void destroy_free_segmap(struct f2fs_sb_info *sbi)
 	if (!free_i)
 		return;
 	SM_I(sbi)->free_info = NULL;
-	f2fs_kvfree(free_i->free_segmap);
-	f2fs_kvfree(free_i->free_secmap);
+	kvfree(free_i->free_segmap);
+	kvfree(free_i->free_secmap);
 	kfree(free_i);
 }
 
@@ -2577,9 +2490,9 @@ static void destroy_sit_info(struct f2fs_sb_info *sbi)
 	}
 	kfree(sit_i->tmp_map);
 
-	f2fs_kvfree(sit_i->sentries);
-	f2fs_kvfree(sit_i->sec_entries);
-	f2fs_kvfree(sit_i->dirty_sentries_bitmap);
+	kvfree(sit_i->sentries);
+	kvfree(sit_i->sec_entries);
+	kvfree(sit_i->dirty_sentries_bitmap);
 
 	SM_I(sbi)->sit_info = NULL;
 	kfree(sit_i->sit_bitmap);

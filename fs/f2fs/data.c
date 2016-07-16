@@ -42,7 +42,7 @@ static void f2fs_read_end_io(struct bio *bio, int err)
 		}
 	}
 
-	__bio_for_each_segment(bvec, bio, i, 0) {
+	bio_for_each_segment_all(bvec, bio, i) {
 		struct page *page = bvec->bv_page;
 
 		if (!err) {
@@ -62,7 +62,7 @@ static void f2fs_write_end_io(struct bio *bio, int err)
 	struct bio_vec *bvec;
 	int i;
 
-	__bio_for_each_segment(bvec, bio, i, 0) {
+	bio_for_each_segment_all(bvec, bio, i) {
 		struct page *page = bvec->bv_page;
 
 		fscrypt_pullback_bio_page(&page, true);
@@ -135,7 +135,7 @@ static bool __has_merged_page(struct f2fs_bio_info *io, struct inode *inode,
 	if (!inode && !page && !ino)
 		return true;
 
-	__bio_for_each_segment(bvec, io->bio, i, 0) {
+	bio_for_each_segment_all(bvec, io->bio, i) {
 
 		if (bvec->bv_page->mapping)
 			target = bvec->bv_page;
@@ -611,7 +611,8 @@ alloc:
 	return 0;
 }
 
-ssize_t f2fs_preallocate_blocks(struct inode *inode, loff_t pos, size_t count, bool dio)
+ssize_t f2fs_preallocate_blocks(struct inode *inode, loff_t pos,
+					size_t count, bool dio)
 {
 	struct f2fs_map_blocks map;
 	ssize_t ret = 0;
@@ -1070,7 +1071,7 @@ submit_and_realloc:
 			}
 
 			bio = bio_alloc(GFP_KERNEL,
-				min_t(int, nr_pages, BIO_MAX_PAGES));
+				min_t(int, nr_pages, bio_get_nr_vecs(bdev)));
 			if (!bio) {
 				if (ctx)
 					fscrypt_release_ctx(ctx);
@@ -1782,7 +1783,7 @@ static ssize_t f2fs_direct_IO(int rw, struct kiocb *iocb,
 
 	err = blockdev_direct_IO(rw, iocb, inode, iov, offset, nr_segs,
 							get_data_block_dio);
-	if (err < 0 && (rw & WRITE)) {
+	if (rw & WRITE) {
 		if (err > 0)
 			set_inode_flag(F2FS_I(inode), FI_UPDATE_WRITE);
 		else if (err < 0)
@@ -1794,12 +1795,14 @@ static ssize_t f2fs_direct_IO(int rw, struct kiocb *iocb,
 	return err;
 }
 
-void f2fs_invalidate_page(struct page *page, unsigned long offset)
+void f2fs_invalidate_page(struct page *page, unsigned int offset,
+							unsigned int length)
 {
 	struct inode *inode = page->mapping->host;
 	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
 
-	if (inode->i_ino >= F2FS_ROOT_INO(sbi) && (offset % PAGE_SIZE))
+	if (inode->i_ino >= F2FS_ROOT_INO(sbi) &&
+		(offset % PAGE_SIZE || length != PAGE_SIZE))
 		return;
 
 	if (PageDirty(page)) {

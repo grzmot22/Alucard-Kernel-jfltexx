@@ -65,7 +65,8 @@ static void f2fs_build_fault_attr(unsigned int rate)
 
 /* f2fs-wide shrinker description */
 static struct shrinker f2fs_shrinker_info = {
-	.shrink = f2fs_shrink_scan,
+	.scan_objects = f2fs_shrink_scan,
+	.count_objects = f2fs_shrink_count,
 	.seeks = DEFAULT_SEEKS,
 };
 
@@ -568,10 +569,16 @@ static int f2fs_drop_inode(struct inode *inode)
 			if (f2fs_is_atomic_file(inode))
 				drop_inmem_pages(inode);
 
+			/* should remain fi->extent_tree for writepage */
+			f2fs_destroy_extent_node(inode);
+
+			sb_start_intwrite(inode->i_sb);
 			i_size_write(inode, 0);
 
 			if (F2FS_HAS_BLOCKS(inode))
 				f2fs_truncate(inode, true);
+
+			sb_end_intwrite(inode->i_sb);
 
 			fscrypt_put_encryption_info(inode, NULL);
 			spin_lock(&inode->i_lock);
@@ -671,6 +678,8 @@ static void f2fs_put_super(struct super_block *sb)
 	wait_for_completion(&sbi->s_kobj_unregister);
 
 	sb->s_fs_info = NULL;
+	if (sbi->s_chksum_driver)
+		crypto_free_shash(sbi->s_chksum_driver);
 	kfree(sbi->raw_super);
 
 	destroy_percpu_info(sbi);
@@ -853,7 +862,7 @@ static int segment_bits_seq_show(struct seq_file *seq, void *offset)
 #define F2FS_PROC_FILE_DEF(_name)					\
 static int _name##_open_fs(struct inode *inode, struct file *file)	\
 {									\
-	return single_open(file, _name##_seq_show, PDE(inode)->data);	\
+	return single_open(file, _name##_seq_show, PDE_DATA(inode));	\
 }									\
 									\
 static const struct file_operations f2fs_seq_##_name##_fops = {		\
@@ -1499,6 +1508,15 @@ try_onemore:
 
 	sbi->sb = sb;
 
+	/* Load the checksum driver */
+	sbi->s_chksum_driver = crypto_alloc_shash("crc32", 0, 0);
+	if (IS_ERR(sbi->s_chksum_driver)) {
+		f2fs_msg(sb, KERN_ERR, "Cannot load crc32 driver.");
+		err = PTR_ERR(sbi->s_chksum_driver);
+		sbi->s_chksum_driver = NULL;
+		goto free_sbi;
+	}
+
 	/* set a block size */
 	if (unlikely(!sb_set_blocksize(sb, F2FS_BLKSIZE))) {
 		f2fs_msg(sb, KERN_ERR, "unable to set blocksize");
@@ -1775,6 +1793,8 @@ free_options:
 free_sb_buf:
 	kfree(raw_super);
 free_sbi:
+	if (sbi->s_chksum_driver)
+		crypto_free_shash(sbi->s_chksum_driver);
 	kfree(sbi);
 
 	/* give only one another chance */
@@ -1806,6 +1826,7 @@ static struct file_system_type f2fs_fs_type = {
 	.kill_sb	= kill_f2fs_super,
 	.fs_flags	= FS_REQUIRES_DEV,
 };
+MODULE_ALIAS_FS("f2fs");
 
 static int __init init_inodecache(void)
 {
@@ -1852,7 +1873,6 @@ static int __init init_f2fs_fs(void)
 		err = -ENOMEM;
 		goto free_extent_cache;
 	}
-
 #ifdef CONFIG_F2FS_FAULT_INJECTION
 	f2fs_fault_inject.kset = f2fs_kset;
 	f2fs_build_fault_attr(0);
@@ -1879,7 +1899,6 @@ free_filesystem:
 free_shrinker:
 	unregister_shrinker(&f2fs_shrinker_info);
 #ifdef CONFIG_F2FS_FAULT_INJECTION
-free_kset:
 	if (f2fs_fault_inject.kset)
 		kobject_put(&f2fs_fault_inject);
 #endif

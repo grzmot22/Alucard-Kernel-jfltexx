@@ -41,7 +41,7 @@ static int f2fs_vm_page_mkwrite(struct vm_area_struct *vma,
 	struct dnode_of_data dn;
 	int err;
 
-	vfs_check_frozen(inode->i_sb, SB_FREEZE_WRITE);
+	sb_start_pagefault(inode->i_sb);
 
 	f2fs_bug_on(sbi, f2fs_has_inline_data(inode));
 
@@ -96,12 +96,16 @@ mapped:
 	/* if gced page is attached, don't write to cold segment */
 	clear_cold_data(page);
 out:
+	sb_end_pagefault(inode->i_sb);
 	f2fs_update_time(sbi, REQ_TIME);
 	return block_page_mkwrite_return(err);
 }
 
 static const struct vm_operations_struct f2fs_file_vm_ops = {
 	.fault		= filemap_fault,
+#if 0
+	.map_pages	= filemap_map_pages,
+#endif
 	.page_mkwrite	= f2fs_vm_page_mkwrite,
 };
 
@@ -430,7 +434,7 @@ static loff_t f2fs_llseek(struct file *file, loff_t offset, int whence)
 	case SEEK_CUR:
 	case SEEK_END:
 		return generic_file_llseek_size(file, offset, whence,
-						maxbytes);
+						maxbytes, i_size_read(inode));
 	case SEEK_DATA:
 	case SEEK_HOLE:
 		if (offset < 0)
@@ -477,8 +481,8 @@ static int f2fs_file_open(struct inode *inode, struct file *filp)
 			return -ENOKEY;
 	}
 	dir = dget_parent(filp->f_path.dentry);
-	if (f2fs_encrypted_inode(dir->d_inode) &&
-			!fscrypt_has_permitted_context(dir->d_inode, inode)) {
+	if (f2fs_encrypted_inode(d_inode(dir)) &&
+			!fscrypt_has_permitted_context(d_inode(dir), inode)) {
 		dput(dir);
 		return -EPERM;
 	}
@@ -756,6 +760,9 @@ const struct inode_operations f2fs_file_inode_operations = {
 	.getattr	= f2fs_getattr,
 	.setattr	= f2fs_setattr,
 	.get_acl	= f2fs_get_acl,
+#if 0
+	.set_acl	= f2fs_set_acl,
+#endif
 #ifdef CONFIG_F2FS_FS_XATTR
 	.setxattr	= generic_setxattr,
 	.getxattr	= generic_getxattr,
@@ -1132,7 +1139,7 @@ static int f2fs_zero_range(struct inode *inode, loff_t offset, loff_t len,
 
 			index = end;
 			new_size = max_t(loff_t, new_size,
-					(loff_t)index << PAGE_SHIFT);
+					(loff_t)(index) << PAGE_SHIFT);
 		}
 
 		if (off_end) {
@@ -1595,22 +1602,22 @@ static int f2fs_ioc_shutdown(struct file *filp, unsigned long arg)
 		return ret;
 
 	switch (in) {
-	case FS_GOING_DOWN_FULLSYNC:
+	case F2FS_GOING_DOWN_FULLSYNC:
 		sb = freeze_bdev(sb->s_bdev);
 		if (sb && !IS_ERR(sb)) {
 			f2fs_stop_checkpoint(sbi, false);
 			thaw_bdev(sb->s_bdev, sb);
 		}
 		break;
-	case FS_GOING_DOWN_METASYNC:
+	case F2FS_GOING_DOWN_METASYNC:
 		/* do checkpoint only */
 		f2fs_sync_fs(sb, 1);
 		f2fs_stop_checkpoint(sbi, false);
 		break;
-	case FS_GOING_DOWN_NOSYNC:
+	case F2FS_GOING_DOWN_NOSYNC:
 		f2fs_stop_checkpoint(sbi, false);
 		break;
-	case FS_GOING_DOWN_METAFLUSH:
+	case F2FS_GOING_DOWN_METAFLUSH:
 		sync_meta_pages(sbi, META, LONG_MAX);
 		f2fs_stop_checkpoint(sbi, false);
 		break;
@@ -2005,7 +2012,7 @@ long f2fs_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		return f2fs_ioc_release_volatile_write(filp);
 	case F2FS_IOC_ABORT_VOLATILE_WRITE:
 		return f2fs_ioc_abort_volatile_write(filp);
-	case FS_IOC_SHUTDOWN:
+	case F2FS_IOC_SHUTDOWN:
 		return f2fs_ioc_shutdown(filp, arg);
 	case FITRIM:
 		return f2fs_ioc_fitrim(filp, arg);
@@ -2082,7 +2089,7 @@ long f2fs_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case F2FS_IOC_START_VOLATILE_WRITE:
 	case F2FS_IOC_RELEASE_VOLATILE_WRITE:
 	case F2FS_IOC_ABORT_VOLATILE_WRITE:
-	case FS_IOC_SHUTDOWN:
+	case F2FS_IOC_SHUTDOWN:
 	case F2FS_IOC_SET_ENCRYPTION_POLICY:
 	case F2FS_IOC_GET_ENCRYPTION_PWSALT:
 	case F2FS_IOC_GET_ENCRYPTION_POLICY:

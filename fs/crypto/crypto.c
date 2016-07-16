@@ -347,13 +347,13 @@ EXPORT_SYMBOL(fscrypt_zeroout_range);
  * potentially caching stale data after a key has been added or
  * removed.
  */
-static int fscrypt_d_revalidate(struct dentry *dentry, struct nameidata *nd)
+static int fscrypt_d_revalidate(struct dentry *dentry, unsigned int flags)
 {
 	struct dentry *dir;
 	struct fscrypt_info *ci;
 	int dir_has_key, cached_with_key;
 
-	if (nd && nd->flags & LOOKUP_RCU)
+	if (flags & LOOKUP_RCU)
 		return -ECHILD;
 
 	dir = dget_parent(dentry);
@@ -386,7 +386,7 @@ static int fscrypt_d_revalidate(struct dentry *dentry, struct nameidata *nd)
 	 * We also fail the validation if the dentry was created with
 	 * the key present, but we no longer have the key, or vice versa.
 	 */
-	if (!cached_with_key ||
+	if ((!cached_with_key && d_is_negative(dentry)) ||
 			(!cached_with_key && dir_has_key) ||
 			(cached_with_key && !dir_has_key))
 		return 0;

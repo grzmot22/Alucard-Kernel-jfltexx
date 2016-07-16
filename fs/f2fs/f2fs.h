@@ -23,10 +23,11 @@
 #include <linux/bio.h>
 #include <linux/blkdev.h>
 #include <linux/fscrypto.h>
+#include <crypto/hash.h>
 
 #ifdef CONFIG_F2FS_CHECK_FS
 #define f2fs_bug_on(sbi, condition)	BUG_ON(condition)
-#define f2fs_down_write(x, y)	down_write(x)
+#define f2fs_down_write(x, y)	down_write_nest_lock(x, y)
 #else
 #define f2fs_bug_on(sbi, condition)					\
 	do {								\
@@ -91,7 +92,6 @@ static inline bool time_to_inject(int type)
 /*
  * For mount options
  */
-#define F2FS_SUPER_MAGIC	0xF2F52010	/* F2FS Magic Number */
 #define F2FS_MOUNT_BG_GC		0x00000001
 #define F2FS_MOUNT_DISABLE_ROLL_FORWARD	0x00000002
 #define F2FS_MOUNT_DISCARD		0x00000004
@@ -137,27 +137,6 @@ struct f2fs_mount_info {
 #define F2FS_CLEAR_FEATURE(sb, mask)					\
 	F2FS_SB(sb)->raw_super->feature &= ~cpu_to_le32(mask)
 
-#define CRCPOLY_LE 0xedb88320
-
-static inline __u32 f2fs_crc32(void *buf, size_t len)
-{
-	unsigned char *p = (unsigned char *)buf;
-	__u32 crc = F2FS_SUPER_MAGIC;
-	int i;
-
-	while (len--) {
-		crc ^= *p++;
-		for (i = 0; i < 8; i++)
-			crc = (crc >> 1) ^ ((crc & 1) ? CRCPOLY_LE : 0);
-	}
-	return crc;
-}
-
-static inline bool f2fs_crc_valid(__u32 blk_crc, void *buf, size_t buf_size)
-{
-	return f2fs_crc32(buf, buf_size) == blk_crc;
-}
-
 static inline void inode_lock(struct inode *inode)
 {
 	mutex_lock(&inode->i_mutex);
@@ -176,9 +155,9 @@ static inline void inode_unlock(struct inode *inode)
  *
  * Please refer to the comment for waitqueue_active.
  */
-static inline bool wq_has_sleeper(wait_queue_head_t *wq)
+static inline bool wq_has_sleeper(wait_queue_head_t *wq) 
 {
-	/*
+	/*   
 	 * We need to be sure we are in sync with the
 	 * add_wait_queue modifications to the wait queue.
 	 *
@@ -305,15 +284,15 @@ static inline bool __has_cursum_space(struct f2fs_journal *journal,
 #define F2FS_IOC_GETFLAGS		FS_IOC_GETFLAGS
 #define F2FS_IOC_SETFLAGS		FS_IOC_SETFLAGS
 #define F2FS_IOC_GETVERSION		FS_IOC_GETVERSION
-#define FS_IOC_SHUTDOWN        _IOR('X', 125, __u32)   /* Shutdown */
+#define F2FS_IOC_SHUTDOWN	_IOR('X', 125, __u32)	/* Shutdown */
 
 /*
  * Flags for going down operation used by FS_IOC_GOINGDOWN
  */
-#define FS_GOING_DOWN_FULLSYNC 0x0     /* going down with full sync */
-#define FS_GOING_DOWN_METASYNC 0x1     /* going down with metadata */
-#define FS_GOING_DOWN_NOSYNC   0x2     /* going down */
-#define FS_GOING_DOWN_METAFLUSH	0x3	/* going down with meta flush */
+#define F2FS_GOING_DOWN_FULLSYNC	0x0	/* going down with full sync */
+#define F2FS_GOING_DOWN_METASYNC	0x1	/* going down with metadata */
+#define F2FS_GOING_DOWN_NOSYNC		0x2	/* going down */
+#define F2FS_GOING_DOWN_METAFLUSH	0x3	/* going down with meta flush */
 
 #define F2FS_IOCTL_MAGIC		0xf5
 #define F2FS_IOC_START_ATOMIC_WRITE	_IO(F2FS_IOCTL_MAGIC, 1)
@@ -746,7 +725,6 @@ struct f2fs_io_info {
 };
 
 #define is_read_io(rw)	(((rw) & 1) == READ)
-
 struct f2fs_bio_info {
 	struct f2fs_sb_info *sbi;	/* f2fs superblock */
 	struct bio *bio;		/* bios to merge */
@@ -917,6 +895,9 @@ struct f2fs_sb_info {
 	/* For write statistics */
 	u64 sectors_written_start;
 	u64 kbytes_written;
+
+	/* Reference to checksum algorithm driver via cryptoapi */
+	struct crypto_shash *s_chksum_driver;
 };
 
 /* For write statistics. Suppose sector size is 512 bytes,
@@ -943,7 +924,7 @@ static inline bool is_idle(struct f2fs_sb_info *sbi)
 {
 	struct block_device *bdev = sbi->sb->s_bdev;
 	struct request_queue *q = bdev_get_queue(bdev);
-	struct request_list *rl = &q->rq;
+	struct request_list *rl = &q->root_rl;
 
 	if (rl->count[BLK_RW_SYNC] || rl->count[BLK_RW_ASYNC])
 		return 0;
@@ -954,6 +935,34 @@ static inline bool is_idle(struct f2fs_sb_info *sbi)
 /*
  * Inline functions
  */
+#define SHASH_DESC_ON_STACK(shash, ctx)                           \
+	char __##shash##_desc[sizeof(struct shash_desc) +         \
+		crypto_shash_descsize(ctx)] CRYPTO_MINALIGN_ATTR; \
+	struct shash_desc *shash = (struct shash_desc *)__##shash##_desc
+
+static inline u32 f2fs_crc32(struct f2fs_sb_info *sbi, const void *address,
+			   unsigned int length)
+{
+	SHASH_DESC_ON_STACK(shash, sbi->s_chksum_driver);
+	u32 *ctx = (u32 *)shash_desc_ctx(shash);
+	int err;
+
+	shash->tfm = sbi->s_chksum_driver;
+	shash->flags = 0;
+	*ctx = F2FS_SUPER_MAGIC;
+
+	err = crypto_shash_update(shash, address, length);
+	BUG_ON(err);
+
+	return *ctx;
+}
+
+static inline bool f2fs_crc_valid(struct f2fs_sb_info *sbi, __u32 blk_crc,
+				  void *buf, size_t buf_size)
+{
+	return f2fs_crc32(sbi, buf, buf_size) == blk_crc;
+}
+
 static inline struct f2fs_inode_info *F2FS_I(struct inode *inode)
 {
 	return container_of(inode, struct f2fs_inode_info, vfs_inode);
@@ -1725,11 +1734,6 @@ static inline bool f2fs_cp_error(struct f2fs_sb_info *sbi)
 	return is_set_ckpt_flags(sbi->ckpt, CP_ERROR_FLAG);
 }
 
-static inline struct inode *file_inode(struct file *f)
-{
-	return f->f_path.dentry->d_inode;
-}
-
 static inline bool is_dot_dotdot(const struct qstr *str)
 {
 	if (str->len == 1 && str->name[0] == '.')
@@ -1781,14 +1785,6 @@ static inline void *f2fs_kvzalloc(size_t size, gfp_t flags)
 	return ret;
 }
 
-static inline void f2fs_kvfree(void *ptr)
-{
-	if (is_vmalloc_addr(ptr))
-		vfree(ptr);
-	else
-		kfree(ptr);
-}
-
 #define get_inode_mode(i) \
 	((is_inode_flag_set(F2FS_I(i), FI_ACL_MODE)) ? \
 	 (F2FS_I(i)->i_acl_mode) : ((i)->i_mode))
@@ -1838,8 +1834,7 @@ void set_de_type(struct f2fs_dir_entry *, umode_t);
 unsigned char get_de_type(struct f2fs_dir_entry *);
 struct f2fs_dir_entry *find_target_dentry(struct fscrypt_name *,
 			f2fs_hash_t, int *, struct f2fs_dentry_ptr *);
-bool f2fs_fill_dentries(struct file *, void *, filldir_t,
-			struct f2fs_dentry_ptr *, unsigned int,
+bool f2fs_fill_dentries(struct dir_context *, struct f2fs_dentry_ptr *,
 			unsigned int, struct fscrypt_str *);
 void do_make_empty_dir(struct inode *, struct inode *,
 			struct f2fs_dentry_ptr *);
@@ -2023,7 +2018,7 @@ struct page *get_new_data_page(struct inode *, struct page *, pgoff_t, bool);
 int do_write_data_page(struct f2fs_io_info *);
 int f2fs_map_blocks(struct inode *, struct f2fs_map_blocks *, int, int);
 int f2fs_fiemap(struct inode *inode, struct fiemap_extent_info *, u64, u64);
-void f2fs_invalidate_page(struct page *, unsigned long);
+void f2fs_invalidate_page(struct page *, unsigned int, unsigned int);
 int f2fs_release_page(struct page *, gfp_t);
 
 /*
@@ -2222,7 +2217,7 @@ int f2fs_convert_inline_inode(struct inode *);
 int f2fs_write_inline_data(struct inode *, struct page *);
 bool recover_inline_data(struct inode *, struct page *);
 struct f2fs_dir_entry *find_in_inline_dir(struct inode *,
-			struct fscrypt_name *, struct page **);
+				struct fscrypt_name *, struct page **);
 struct f2fs_dir_entry *f2fs_parent_inline_dir(struct inode *, struct page **);
 int make_empty_inline_dir(struct inode *inode, struct inode *, struct page *);
 int f2fs_add_inline_entry(struct inode *, const struct qstr *, struct inode *,
@@ -2230,7 +2225,7 @@ int f2fs_add_inline_entry(struct inode *, const struct qstr *, struct inode *,
 void f2fs_delete_inline_entry(struct f2fs_dir_entry *, struct page *,
 						struct inode *, struct inode *);
 bool f2fs_empty_inline_dir(struct inode *);
-int f2fs_read_inline_dir(struct file *, void *, filldir_t,
+int f2fs_read_inline_dir(struct file *, struct dir_context *,
 						struct fscrypt_str *);
 int f2fs_inline_data_fiemap(struct inode *,
 		struct fiemap_extent_info *, __u64, __u64);
@@ -2238,8 +2233,8 @@ int f2fs_inline_data_fiemap(struct inode *,
 /*
  * shrinker.c
  */
-int f2fs_shrink_count(struct shrinker *, struct shrink_control *);
-int f2fs_shrink_scan(struct shrinker *, struct shrink_control *);
+unsigned long f2fs_shrink_count(struct shrinker *, struct shrink_control *);
+unsigned long f2fs_shrink_scan(struct shrinker *, struct shrink_control *);
 void f2fs_join_shrinker(struct f2fs_sb_info *);
 void f2fs_leave_shrinker(struct f2fs_sb_info *);
 
