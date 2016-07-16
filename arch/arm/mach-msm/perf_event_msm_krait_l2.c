@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011, 2012 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011, 2012, 2016 The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -17,6 +17,7 @@
 #include <linux/spinlock.h>
 
 #include <mach/msm-krait-l2-accessors.h>
+
 
 #define MAX_L2_PERIOD	((1ULL << 32) - 1)
 #define MAX_KRAIT_L2_CTRS 10
@@ -477,7 +478,7 @@ static int msm_l2_test_set_ev_constraint(struct perf_event *event)
 	shift_idx = ((reg * 4) + group);
 
 	if (shift_idx >= PMU_CODES_SIZE) {
-		err =  -EINVAL;
+		err = -EINVAL;
 		goto out;
 	}
 
@@ -528,6 +529,7 @@ static int msm_l2_clear_ev_constraint(struct perf_event *event)
 		err = -EINVAL;
 		goto out;
 	}
+
 	bitmap_t = 1 << shift_idx;
 
 	/* Clear constraint bit. */
