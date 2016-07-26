@@ -1,4 +1,4 @@
-/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -357,7 +357,7 @@ static void msm_rpm_notify(void *data, unsigned event)
 static struct msm_rpm_wait_data *msm_rpm_get_entry_from_msg_id(uint32_t msg_id)
 {
 	struct list_head *ptr;
-	struct msm_rpm_wait_data *elem;
+	struct msm_rpm_wait_data *elem = NULL;
 	unsigned long flags;
 
 	spin_lock_irqsave(&msm_rpm_list_lock, flags);
@@ -423,7 +423,7 @@ static void msm_rpm_free_list_entry(struct msm_rpm_wait_data *elem)
 static void msm_rpm_process_ack(uint32_t msg_id, int errno)
 {
 	struct list_head *ptr;
-	struct msm_rpm_wait_data *elem;
+	struct msm_rpm_wait_data *elem = NULL;
 	unsigned long flags;
 
 	spin_lock_irqsave(&msm_rpm_list_lock, flags);
@@ -778,6 +778,10 @@ static int msm_rpm_send_data(struct msm_rpm_request *cdata,
 	spin_unlock_irqrestore(&msm_rpm_data.smd_lock_write, flags);
 
 	if (ret == msg_size) {
+		trace_rpm_send_message(noirq, cdata->msg_hdr.set,
+				cdata->msg_hdr.resource_type,
+				cdata->msg_hdr.resource_id,
+				cdata->msg_hdr.msg_id);
 		for (i = 0; (i < cdata->write_idx); i++)
 			cdata->kvp[i].valid = false;
 		cdata->msg_hdr.data_len = 0;
@@ -831,6 +835,7 @@ EXPORT_SYMBOL(msm_rpm_send_request_noack);
 int msm_rpm_wait_for_ack(uint32_t msg_id)
 {
 	struct msm_rpm_wait_data *elem;
+	int rc = 0;
 
 	if (!msg_id) {
 		pr_err("%s(): Invalid msg id\n", __func__);
@@ -838,18 +843,22 @@ int msm_rpm_wait_for_ack(uint32_t msg_id)
 	}
 
 	if (msg_id == 1)
-		return 0;
+		return rc;
 
 	if (standalone)
-		return 0;
+		return rc;
 
 	elem = msm_rpm_get_entry_from_msg_id(msg_id);
 	if (!elem)
-		return 0;
+		return rc;
 
 	wait_for_completion(&elem->ack);
+	trace_rpm_ack_recd(0, msg_id);
+
+	rc = elem->errno;
 	msm_rpm_free_list_entry(elem);
-	return elem->errno;
+
+	return rc;
 }
 EXPORT_SYMBOL(msm_rpm_wait_for_ack);
 
@@ -900,6 +909,8 @@ int msm_rpm_wait_for_ack_noirq(uint32_t msg_id)
 	}
 
 	rc = elem->errno;
+	trace_rpm_ack_recd(1, msg_id);
+
 	msm_rpm_free_list_entry(elem);
 wait_ack_cleanup:
 	spin_unlock_irqrestore(&msm_rpm_data.smd_lock_read, flags);
